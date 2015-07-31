@@ -1,7 +1,7 @@
 """
-Recreating HarmonicAnalysis.m process in python
+Translation of Shankar Shivappa's matlab HarmonicAnalysis.m code to Python
 
-Example:
+Usage Example:
     import pika as p
     import numpy as np
 
@@ -12,18 +12,10 @@ Example:
     p.write_wav(out, "test.wav")
 
 """
-#from pylab import *
-#import pickle
 import numpy as np
 import scipy
-from matplotlib import animation
 import scikits.audiolab
-import scipy.signal as signal
-import scipy.stats as stats
-from scipy.signal import kaiserord, lfilter, firwin, freqz, fftconvolve
 import find_peaks as peaks
-#from FFT import *
-#import random
 
 infile = "May26-2014-BeaconRockSP.wav"
 
