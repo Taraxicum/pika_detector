@@ -11,7 +11,6 @@ Example usage for the Python code:
     #if you are using a stereo audio file you could uncomment the line
     #below to get a single channel from the stereo audio
     #left = [v[0] for v in audio] 
-    parser = p.AudioParser(audio, freq)
-    parser.pre_process()
-    parser.find_pika_calls()
-    parser.output_audio("pika_calls.wav")
+    
+    p.audio_segments(audio, freq, 10, "trial.wav") 
+
