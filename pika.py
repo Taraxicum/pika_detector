@@ -10,6 +10,15 @@ Usage Example:
     #left = [v[0] for v in audio] #left channel if a stereo file not needed for mono
     p.audio_segments(audio, freq, 10, "trial.wav") 
 
+Example exploring results:
+    import pika as p
+    
+    (audio, freq, nBits) = p.load_audio(p.infile)   #here p.infile could be any desired audio file
+    parser = p.AudioParser(audio[10*freq:30*freq], freq) #loads in the audio from second 10 to 30
+    parser.pre_process()
+    parser.harmonic_frequency()
+    parser.plot_pika_from_harmonic() #Will show plots of the predicted results
+    #This may be useful to further optimize predictor, particularly in noisy scenarios
 """
 import numpy as np
 import pandas as pd
@@ -70,18 +79,18 @@ class AudioParser(object):
     
     def spectrogram(self):
         factor = 2048.0/self.frequency
-        plt.subplot(1, 3, 1)
+        plt.subplot(1, 2, 1)
         plt.imshow(np.asarray(self.fft).T, origin='lower')
         plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
-        plt.xlabel("Original chopped fft")
-        x = [i*factor for i in range(len(self.fft))]
-        plt.subplot(1, 3, 2)
-        plt.imshow(np.asarray([f[0:500] for f in self.fft]).T, origin='lower')
-        plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
-        plt.xlim(0, len(self.fft))
-        plt.xlabel("Further chopped fft")
-        plt.subplot(1, 3, 3)
+        plt.xlabel("Chopped fft")
+        #x = [i*factor for i in range(len(self.fft))]
+        #plt.subplot(1, 3, 2)
+        #plt.imshow(np.asarray([f[0:500] for f in self.fft]).T, origin='lower')
+        #plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
+        #plt.xlim(0, len(self.fft))
+        #plt.xlabel("Further chopped fft")
+        plt.subplot(1, 2, 2)
         plt.imshow(np.asarray([f[0:500] for f in self.processed_fft_frames]).T, origin='lower')
         plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
@@ -94,26 +103,33 @@ class AudioParser(object):
         """
         fft_size = 4096
         first_dim = len(self.audio)/(fft_size/2) - 1
-        second_dim = 500 # fft_size/2 - fft_size/32
+        second_dim = 275 # fft_size/2 - fft_size/32
         self.fft = np.zeros((first_dim, second_dim))
         self.processed_fft_frames = np.zeros((first_dim, second_dim+12)) #extra values from convolve (I think?)
         for i in range(0, len(self.audio) - fft_size, fft_size/2):
             f = np.absolute(np.fft.fft(self.audio[i:i+fft_size]))    #Magnitude of fft
             f = f[fft_size/32:fft_size/2]                         #Chop out some unneeded frequencies
             #f = np.log10(f/sum(f))
-            self.fft[i*2/fft_size] = f[0:500]
+            self.fft[i*2/fft_size] = f[150:425]
         max_val = np.amax(self.fft)
         normed_fft = self.fft/max_val
         avg_fft = np.sum(normed_fft, axis=0)/len(normed_fft)
         nr_fft = np.zeros_like(self.fft)
         for i, frame in enumerate(normed_fft):
             nr_fft[i] = [max(frame[j] - avg_fft[j], 0) for j, v in enumerate(frame)] #noise-reduction
+            #if i%30 == 0:
+            #    plt.subplot(1,2,1)
+            #    plt.plot(self.fft[i])
+            #    plt.subplot(1,2,2)
+            #    plt.plot(nr_fft[i])
+            #    plt.show()
+            #    print "showing plot at time: {}".format((i*fft_size/2.0)/self.frequency)
         
         f_mean = np.mean(nr_fft)
         #.15 threshold found through trial and error, could be adjusted for
         # slightly better results
         threshold = .15
-        tf = [[1.0 if x > f_mean + threshold else 0.0 for x in f] for f in nr_fft] 
+        tf = [[x if x > f_mean + threshold else 0.0 for x in f] for f in nr_fft] 
         self.processed_fft_frames = tf
 
 
@@ -188,7 +204,6 @@ class AudioParser(object):
     def harmonic_frequency(self):
         """Uses harmonic frequencies to attempt to identify locations of pika calls
         """
-        pika_found = []
         self.ridges = []
         factor = 2048.0/self.frequency #mutliply i by factor to get time of the frame's location in seconds 
         self.peaks = []
@@ -203,16 +218,16 @@ class AudioParser(object):
                 if (harmonic_freq < 75) and (harmonic_freq > 55):
                     if current_ridge is None:
                         current_ridge = i*factor
-                    pika_found.append(i*factor)
                 elif current_ridge is not None:
                     self.ridges.append([current_ridge, i*factor])
+                    print [current_ridge, i*factor]
                     current_ridge = None
             elif current_ridge is not None:
                 self.ridges.append([current_ridge, i*factor])
+                print [current_ridge, i*factor]
                 current_ridge = None
         if current_ridge is not None: 
             self.ridges.append([current_ridge, len(self.processed_fft_frames)*factor])
-        return pika_found
 
     def find_pika_from_energy(self, filename='test.wav'):
         self.energy_segments()
@@ -225,6 +240,32 @@ class AudioParser(object):
                 min(r[1]+.01, len(self.energy_envelope))*self.frequency])
         return output
    
+    def plot_pika_from_harmonic(self):
+        """Uses audio predicted to be pika calls found in self.ridges (populated with self.harmonic_frequency())
+         for each predicted call, plots self.fft, self.processed_fft_frames, and the spectrogram from
+         self.processed_fft_frames with a surrounding buffer of 30 additional frames on each side of the 
+         predicted call.
+        """
+        factor = 2048.0/self.frequency 
+        for r in self.ridges:
+            mid = (r[1] + r[0])/2
+            mid_frame = int(mid/factor)
+            first = r[0]
+            first_frame = int(first/factor)
+            end_frame = int(r[1]/factor)
+            print "showing plot at frame {}, time: {}".format(first_frame, first)
+            
+            plt.subplot(1,3,1)
+            plt.plot(self.fft[mid_frame])
+            plt.subplot(1,3,2)
+            plt.plot(self.processed_fft_frames[mid_frame])
+            
+            plt.subplot(1,3,3)
+            plt.imshow(np.asarray(self.processed_fft_frames[first_frame-30:end_frame+30]).T, origin='lower')
+            plt.xlabel("pika?")
+            plt.show()
+    
+    
     def find_pika_from_harmonic(self, buffer_length=.01):
         """pre_process() must have been called first.
         :returns list containing segments of self.audio thought to contain pika calls
