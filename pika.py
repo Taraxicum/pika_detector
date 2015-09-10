@@ -73,28 +73,28 @@ class AudioParser(object):
         self.frequency = frequency
     
     def plot_energy(self):
-        factor = 2048.0/self.frequency
+        factor = self.step_size*1.0/self.frequency
         plt.plot([i*factor for i in range(len(self.energy_envelope))], self.energy_envelope, 'ro')
         plt.show()
     
     def spectrogram(self):
-        factor = 2048.0/self.frequency
-        plt.subplot(1, 2, 1)
-        plt.imshow(np.asarray(self.fft).T, origin='lower')
-        plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
-        plt.xlim(0, len(self.fft))
-        plt.xlabel("Chopped fft")
+        factor = self.step_size*1.0/self.frequency
+        #plt.subplot(1, 2, 1)
+        #plt.imshow(np.asarray(self.fft).T, origin='lower')
+        #plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
+        #plt.xlim(0, len(self.fft))
+        #plt.xlabel("Chopped fft")
         #x = [i*factor for i in range(len(self.fft))]
         #plt.subplot(1, 3, 2)
         #plt.imshow(np.asarray([f[0:500] for f in self.fft]).T, origin='lower')
         #plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
         #plt.xlim(0, len(self.fft))
         #plt.xlabel("Further chopped fft")
-        plt.subplot(1, 2, 2)
-        plt.imshow(np.asarray([f[0:500] for f in self.processed_fft_frames]).T, origin='lower')
+        #plt.subplot(1, 2, 2)
+        plt.imshow(np.asarray([f for f in self.processed_fft_frames]).T, origin='lower')
         plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
-        plt.xlabel("Further chopped fft with log, threshold, and convolve")
+        plt.xlabel("Processed FFT")
         plt.show()
 
     
@@ -102,15 +102,16 @@ class AudioParser(object):
         """Transform (fft), filter, and normalize audio
         """
         fft_size = 4096
-        first_dim = len(self.audio)/(fft_size/2) - 1
+        self.step_size = fft_size/16
+        first_dim = len(self.audio)/(self.step_size) - 1
         second_dim = 275 # fft_size/2 - fft_size/32
         self.fft = np.zeros((first_dim, second_dim))
         self.processed_fft_frames = np.zeros((first_dim, second_dim+12)) #extra values from convolve (I think?)
-        for i in range(0, len(self.audio) - fft_size, fft_size/2):
+        for i in range(0, len(self.audio) - fft_size, self.step_size):
             f = np.absolute(np.fft.fft(self.audio[i:i+fft_size]))    #Magnitude of fft
             f = f[fft_size/32:fft_size/2]                         #Chop out some unneeded frequencies
             #f = np.log10(f/sum(f))
-            self.fft[i*2/fft_size] = f[150:425]
+            self.fft[i/self.step_size] = f[150:425] #This will need to be changed if fft_size changes!
         max_val = np.amax(self.fft)
         normed_fft = self.fft/max_val
         avg_fft = np.sum(normed_fft, axis=0)/len(normed_fft)
@@ -125,7 +126,7 @@ class AudioParser(object):
             #    plt.show()
             #    print "showing plot at time: {}".format((i*fft_size/2.0)/self.frequency)
         
-        f_mean = np.mean(nr_fft)
+        f_mean = np.mean(normed_fft)
         #.15 threshold found through trial and error, could be adjusted for
         # slightly better results
         threshold = .15
@@ -135,7 +136,7 @@ class AudioParser(object):
 
         ###########TEMP###################
         ##Uncomment to view spectrograms of different filterings
-        #factor = 2048.0/self.frequency
+        #factor = self.step_size*1.0/self.frequency
         #length = len(normed_fft)
         #plt.subplot(1, 4, 1)
         #plt.imshow(np.asarray([f[0:500] for f in normed_fft]).T, origin='lower')
@@ -162,7 +163,7 @@ class AudioParser(object):
         #plt.xlabel("fft: and square root")
         #plt.show()
         ##################################
-        self.energy_envelope = np.convolve(np.sum([f[0:500] for f in nr_fft], axis=1), 
+        self.energy_envelope = np.convolve(np.sum([f[0:500] for f in self.processed_fft_frames], axis=1), 
                 [0.125, 0.25, 0.4, 0.5, 0.9, 1, 1, 1, 0.9, 0.5, 0.4, 0.25, 0.125])
         max_energy = np.max(self.energy_envelope)
         self.energy_envelope /= max_energy
@@ -186,7 +187,7 @@ class AudioParser(object):
         """Uses energy envelopes to attempt to identify locations of pika calls
         """
         energy_threshold = 1.7*np.average(self.energy_envelope)
-        factor = 2048.0/self.frequency #mutliply i by factor to get time of the frame's location in seconds 
+        factor = self.step_size*1.0/self.frequency #mutliply i by factor to get time of the frame's location in seconds 
         self.energy_ridges = []
         current_ridge = None
         for i, e in enumerate(self.energy_envelope):
@@ -205,7 +206,7 @@ class AudioParser(object):
         """Uses harmonic frequencies to attempt to identify locations of pika calls
         """
         self.ridges = []
-        factor = 2048.0/self.frequency #mutliply i by factor to get time of the frame's location in seconds 
+        factor = self.step_size*1.0/self.frequency #mutliply i by factor to get time of the frame's location in seconds 
         self.peaks = []
         current_ridge = None
         for i, f in enumerate(self.processed_fft_frames):
@@ -227,6 +228,32 @@ class AudioParser(object):
         if current_ridge is not None: 
             self.ridges.append([current_ridge, len(self.processed_fft_frames)*factor])
 
+    def consolidate_detections(self, threshold=.05):
+        """Detected calls should be in self.ridges (as done in self.harmonic_frequency).
+        This function will go trhough the ridges and if the end of one ridge is within
+        threshold seconds of the next it will combine the ridges.
+        This is useful for when the detector has a false negative in the middle of a call 
+        (perhaps due to microphone noise or other issue) and so ends the detected call,
+        but immediately starts up the next call when it begins detecting it again.
+        """
+        new_ridges = []
+        ridge_count = len(self.ridges)
+        if ridge_count == 0:
+            return #Nothing to do - no detected pika calls to consolidate
+
+        current_ridge = self.ridges[0]
+        for i, r in enumerate(self.ridges):
+            if i + 1 < ridge_count:
+                if current_ridge[1] + threshold >= self.ridges[i+1][0]:
+                    current_ridge[1] = r[1]
+                else:
+                    new_ridges.append(current_ridge)
+                    current_ridge = self.ridges[i+1]
+            else:
+                new_ridges.append(current_ridge)
+        self.ridges = new_ridges
+
+    
     def find_pika_from_energy(self, filename='test.wav'):
         self.energy_segments()
         output = []
@@ -244,7 +271,7 @@ class AudioParser(object):
          self.processed_fft_frames with a surrounding buffer of 30 additional frames on each side of the 
          predicted call.
         """
-        factor = 2048.0/self.frequency 
+        factor = self.step_size*1.0/self.frequency 
         for r in self.ridges:
             mid = (r[1] + r[0])/2
             mid_frame = int(mid/factor)
@@ -273,6 +300,7 @@ class AudioParser(object):
         output = []
         m = max(self.audio)
         self.harmonic_frequency()
+        self.consolidate_detections()
         print "Number of incidents being output: {}".format(len(self.ridges))
         for r in self.ridges:
             output.append(m)
