@@ -3,7 +3,7 @@ Code to detect pika (*Ochonta princeps*) calls in audio file.
 
 There are two versions of code: the original matlab code created by Shankar and the Python version I have been adapting from it.
 
-Usage Examples for the Python code:
+#### Usage Examples for the Python code:
     
     import pika as p
     
@@ -17,7 +17,7 @@ last line in the example above use:
     p.audio_segments(audio, freq, 10, "trial.wav", True)
 
 
-Example exploring results visually:
+#### Example exploring results visually:
 
     import pika as p
     
@@ -26,3 +26,4 @@ Example exploring results visually:
     parser.pre_process()
     parser.harmonic_frequency()
     parser.plot_pika_from_harmonic() #Will show plots of the predicted results
+
