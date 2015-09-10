@@ -220,11 +220,9 @@ class AudioParser(object):
                         current_ridge = i*factor
                 elif current_ridge is not None:
                     self.ridges.append([current_ridge, i*factor])
-                    print [current_ridge, i*factor]
                     current_ridge = None
             elif current_ridge is not None:
                 self.ridges.append([current_ridge, i*factor])
-                print [current_ridge, i*factor]
                 current_ridge = None
         if current_ridge is not None: 
             self.ridges.append([current_ridge, len(self.processed_fft_frames)*factor])
