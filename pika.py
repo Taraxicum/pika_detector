@@ -10,6 +10,11 @@ Usage Example:
     #left = [v[0] for v in audio] #left channel if a stereo file not needed for mono
     p.audio_segments(audio, freq, 10, "trial.wav") 
 
+If you want the output aligned with the original audio (useful for debugging purposes) instead of the 
+last line in the example above use:
+    p.audio_segments(audio, freq, 10, "trial.wav", True)
+
+
 Example exploring results:
     import pika as p
     
@@ -38,7 +43,7 @@ def load_audio(filepath):
     return (snd, sampFreq, nBits)
 
 def audio_segments(audio, freq, segment_length=10, 
-        harmonic_file="output/harmonic.wav"):
+        harmonic_file="output/harmonic.wav", original_placement=False):
     """Segments audio into segment_length (in seconds) chunks and runs the 
     algorithm on each chunk, joining the output together and outputting 
     to harmonic_file
@@ -50,7 +55,7 @@ def audio_segments(audio, freq, segment_length=10,
         end = min(len(audio), (i+segment_length)*freq)
         parser = AudioParser(audio[i*freq:end], freq)
         parser.pre_process()
-        count, out = parser.find_pika_from_harmonic(.1)
+        count, out = parser.find_pika_from_harmonic(.1, original_placement=original_placement)
         harmonic_out.extend(out)
         total += count
     print "Total suspected calls: {}".format(total)
@@ -291,19 +296,35 @@ class AudioParser(object):
             plt.show()
     
     
-    def find_pika_from_harmonic(self, buffer_length=.01):
+    def find_pika_from_harmonic(self, buffer_length=.01, original_placement=False):
         """pre_process() must have been called first.
         :returns list containing segments of self.audio thought to contain pika calls
         with buffer_length (in seconds) space on each side of the pika call 
         (buffered with the signal in audio).
+        :original_placement if True outputs detected calls in same spacing as in original 
+        signal with 0s padding between calls.  This may be useful for comparing output to 
+        original to get better insight into false positives/negatives
         """
-        output = []
-        m = max(self.audio)
         self.harmonic_frequency()
         self.consolidate_detections()
-        print "Number of incidents being output: {}".format(len(self.ridges))
-        for r in self.ridges:
-            output.append(m)
-            output.extend(self.audio[max(0, r[0] - buffer_length)*self.frequency:
-                min(r[1] + buffer_length, len(self.energy_envelope))*self.frequency])
-        return len(self.ridges), output
+        if len(self.ridges) == 0:
+            output = np.zeros(len(self.audio))
+            return 0, output
+        else:
+            m = max(self.audio)
+            print "Number of incidents being output: {}".format(len(self.ridges))
+            last_endpoint = 0
+            output = []
+            for i, r in enumerate(self.ridges):
+                if original_placement:
+                    output.extend(np.zeros((r[0] - last_endpoint)*self.frequency))
+                    output.extend(self.audio[r[0]*self.frequency: r[1]*self.frequency])
+                    last_endpoint = r[1]
+                else:
+                    output.append(m)
+                    output.extend(self.audio[max(0, r[0] - buffer_length)*self.frequency:
+                        min(r[1] + buffer_length, len(self.processed_fft_frames))*self.frequency])
+            if original_placement:
+                output.extend(np.zeros(len(self.audio) - last_endpoint*self.frequency))
+
+            return len(self.ridges), output
