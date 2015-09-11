@@ -31,6 +31,7 @@ from scipy import signal
 import scikits.audiolab
 import find_peaks as peaks
 import matplotlib.pyplot as plt
+import time
 #from pylab import specgram
 
 #infile = "May26-2014-BeaconRockSP4800.wav"
@@ -39,7 +40,7 @@ infile2 = "LarchMountain_interspeciesCalls.wav"
 
 def load_audio(filepath):
     (snd, sampFreq, nBits) = scikits.audiolab.wavread(filepath)
-    if len(snd[0]) == 2: #get left channel if a stereo file not needed for mono
+    if snd.ndim == 2: #get left channel if a stereo file not needed for mono
         snd = [v[0] for v in snd] 
     print "sample frequency of {}: {}".format(filepath, sampFreq)
     return (snd, sampFreq, nBits)
@@ -52,6 +53,7 @@ def audio_segments(audio, freq, segment_length=10,
     """
     harmonic_out = []
     total = 0
+    start_time = time.time()
 
     for i in range(0, len(audio)/freq, segment_length):
         end = min(len(audio), (i+segment_length)*freq)
@@ -60,7 +62,7 @@ def audio_segments(audio, freq, segment_length=10,
         count, out = parser.find_pika_from_harmonic(.1, original_placement=original_placement)
         harmonic_out.extend(out)
         total += count
-    print "Total suspected calls: {}".format(total)
+    print "Total suspected calls: {}, total time (in seconds): {}".format(total, time.time() - start_time)
     scikits.audiolab.wavwrite(np.asarray(harmonic_out), harmonic_file, freq)
 
 class AudioParser(object):
@@ -220,15 +222,16 @@ class AudioParser(object):
         for i, f in enumerate(self.processed_fft_frames):
             locs = peaks.detect_peaks(f, mpd=50)
             self.peaks.append(locs)
-            if self.debug and len(locs) > 2 and len(locs) < 4:
+            if self.debug and len(locs) > 2 and len(locs) < 3:
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 print "locs: {}".format(locs)
                 print "FEW PKS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*factor)
             
-            if len(locs) >= 4 and locs[0] > 30: 
+            if len(locs) >= 3 and locs[0] > 30 and locs[0] < 60: 
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 harmonic_freq =  np.median(inter_peak_dist[1:-1])
-                if (harmonic_freq < 75) and (harmonic_freq > 55):
+                if all((((ipd < 75) and (ipd > 55)) or
+                    ((ipd < 135) and (ipd > 110))) for ipd in inter_peak_dist[1:-1]):
                     if self.debug:
                         print "YES, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*factor)
                     if current_ridge is None:
@@ -244,7 +247,7 @@ class AudioParser(object):
         if current_ridge is not None: 
             self.ridges.append([current_ridge, len(self.processed_fft_frames)*factor])
 
-    def filter_short_ridges(self, threshold=.07):
+    def filter_short_ridges(self, threshold=.10):
         """Detected calls should be in self.ridges (as done in self.harmonic_frequency).
         This function will go through self.ridges and eliminate all ridges shorter than
         threshold (in seconds). The pika calls I have seen so far have been around .2 seconds.
@@ -326,8 +329,14 @@ class AudioParser(object):
         original to get better insight into false positives/negatives
         """
         self.harmonic_frequency()
+        if self.debug:
+            print "Ridges before consolidation: {}".format(self.ridges)
         self.consolidate_ridges()
+        if self.debug:
+            print "Ridges after consolidation: {}".format(self.ridges)
         self.filter_short_ridges()
+        if self.debug:
+            print "Ridges after filtering out short ridges: {}".format(self.ridges)
 
         if len(self.ridges) == 0:
             output = np.zeros(len(self.audio))
