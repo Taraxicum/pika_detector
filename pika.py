@@ -134,7 +134,7 @@ class AudioParser(object):
         f_mean = np.mean(normed_fft)
         #.15 threshold found through trial and error, could be adjusted for
         # slightly better results
-        threshold = .15
+        threshold = .05
         tf = [[x if x > f_mean + threshold else 0.0 for x in f] for f in nr_fft] 
         self.processed_fft_frames = tf
 
@@ -217,11 +217,12 @@ class AudioParser(object):
         for i, f in enumerate(self.processed_fft_frames):
             locs = peaks.detect_peaks(f, mpd=50)
             self.peaks.append(locs)
+            
             if len(locs) >= 4: 
 
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 harmonic_freq =  np.median(inter_peak_dist[1:-1])
-                if (harmonic_freq < 75) and (harmonic_freq > 55):
+                if (inter_peak_dist[0] > 30) and (harmonic_freq < 75) and (harmonic_freq > 55):
                     if current_ridge is None:
                         current_ridge = i*factor
                 elif current_ridge is not None:
@@ -233,9 +234,19 @@ class AudioParser(object):
         if current_ridge is not None: 
             self.ridges.append([current_ridge, len(self.processed_fft_frames)*factor])
 
-    def consolidate_detections(self, threshold=.05):
+    def filter_short_ridges(self, threshold=.07):
         """Detected calls should be in self.ridges (as done in self.harmonic_frequency).
-        This function will go trhough the ridges and if the end of one ridge is within
+        This function will go through self.ridges and eliminate all ridges shorter than
+        threshold (in seconds). The pika calls I have seen so far have been around .2 seconds.
+        self.consolidate_ridges should be called before this function so that a ridge that
+        was broken by a false negative frame will be less likely to get falsely eliminated here.
+        """
+        self.ridges[:] = [r for r in self.ridges if r[1] - r[0] > threshold]
+
+    
+    def consolidate_ridges(self, threshold=.07):
+        """Detected calls should be in self.ridges (as done in self.harmonic_frequency).
+        This function will go through the ridges and if the end of one ridge is within
         threshold seconds of the next it will combine the ridges.
         This is useful for when the detector has a false negative in the middle of a call 
         (perhaps due to microphone noise or other issue) and so ends the detected call,
@@ -245,12 +256,12 @@ class AudioParser(object):
         ridge_count = len(self.ridges)
         if ridge_count == 0:
             return #Nothing to do - no detected pika calls to consolidate
-
+        
         current_ridge = self.ridges[0]
         for i, r in enumerate(self.ridges):
             if i + 1 < ridge_count:
                 if current_ridge[1] + threshold >= self.ridges[i+1][0]:
-                    current_ridge[1] = r[1]
+                    current_ridge[1] = self.ridges[i+1][1]
                 else:
                     new_ridges.append(current_ridge)
                     current_ridge = self.ridges[i+1]
@@ -263,7 +274,6 @@ class AudioParser(object):
         self.energy_segments()
         output = []
         m = max(self.audio)
-        #print "Number of incidents being output: {}".format(len(self.energy_ridges))
         for r in self.energy_ridges:
             output.append(m)
             output.extend(self.audio[max(0, r[0]-.01)*self.frequency:
@@ -306,7 +316,9 @@ class AudioParser(object):
         original to get better insight into false positives/negatives
         """
         self.harmonic_frequency()
-        self.consolidate_detections()
+        self.consolidate_ridges()
+        self.filter_short_ridges()
+
         if len(self.ridges) == 0:
             output = np.zeros(len(self.audio))
             return 0, output
