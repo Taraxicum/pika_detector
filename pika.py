@@ -7,7 +7,6 @@ Usage Example:
     import pika as p
     
     (audio, freq, nBits) = p.load_audio(p.infile)   #here p.infile could be any desired audio file
-    #left = [v[0] for v in audio] #left channel if a stereo file not needed for mono
     p.audio_segments(audio, freq, 10, "trial.wav") 
 
 If you want the output aligned with the original audio (useful for debugging purposes) instead of the 
@@ -36,9 +35,12 @@ import matplotlib.pyplot as plt
 
 #infile = "May26-2014-BeaconRockSP4800.wav"
 infile = "May26-2014-BeaconRockSP_shankars.wav"
+infile2 = "LarchMountain_interspeciesCalls.wav"
 
 def load_audio(filepath):
     (snd, sampFreq, nBits) = scikits.audiolab.wavread(filepath)
+    if len(snd[0]) == 2: #get left channel if a stereo file not needed for mono
+        snd = [v[0] for v in snd] 
     print "sample frequency of {}: {}".format(filepath, sampFreq)
     return (snd, sampFreq, nBits)
 
@@ -71,11 +73,12 @@ class AudioParser(object):
     parser.pre_process()
     parser.output_audio("pika_calls.wav")
     """
-    def __init__(self, audio, frequency):
+    def __init__(self, audio, frequency, debug=False):
         """Audio should be a single channel of raw audio data.
         """
         self.audio = audio
         self.frequency = frequency
+        self.debug = debug
     
     def plot_energy(self):
         factor = self.step_size*1.0/self.frequency
@@ -217,17 +220,24 @@ class AudioParser(object):
         for i, f in enumerate(self.processed_fft_frames):
             locs = peaks.detect_peaks(f, mpd=50)
             self.peaks.append(locs)
+            if self.debug and len(locs) > 2 and len(locs) < 4:
+                inter_peak_dist = np.convolve(locs, [1, -1])
+                print "locs: {}".format(locs)
+                print "FEW PKS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*factor)
             
-            if len(locs) >= 4: 
-
+            if len(locs) >= 4 and locs[0] > 30: 
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 harmonic_freq =  np.median(inter_peak_dist[1:-1])
-                if (inter_peak_dist[0] > 30) and (harmonic_freq < 75) and (harmonic_freq > 55):
+                if (harmonic_freq < 75) and (harmonic_freq > 55):
+                    if self.debug:
+                        print "YES, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*factor)
                     if current_ridge is None:
                         current_ridge = i*factor
                 elif current_ridge is not None:
                     self.ridges.append([current_ridge, i*factor])
                     current_ridge = None
+                elif self.debug:
+                    print "WRONG H-FREQS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*factor)
             elif current_ridge is not None:
                 self.ridges.append([current_ridge, i*factor])
                 current_ridge = None
@@ -330,12 +340,12 @@ class AudioParser(object):
             for i, r in enumerate(self.ridges):
                 if original_placement:
                     output.extend(np.zeros((r[0] - last_endpoint)*self.frequency))
-                    output.extend(self.audio[r[0]*self.frequency: r[1]*self.frequency])
+                    output.extend(self.audio[int(r[0]*self.frequency): int(r[1]*self.frequency)])
                     last_endpoint = r[1]
                 else:
                     output.append(m)
-                    output.extend(self.audio[max(0, r[0] - buffer_length)*self.frequency:
-                        min(r[1] + buffer_length, len(self.processed_fft_frames))*self.frequency])
+                    output.extend(self.audio[int(max(0, r[0] - buffer_length)*self.frequency):
+                        int(min(r[1] + buffer_length, len(self.processed_fft_frames))*self.frequency)])
             if original_placement:
                 output.extend(np.zeros(len(self.audio) - last_endpoint*self.frequency))
 
