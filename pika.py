@@ -6,23 +6,23 @@ Further adaptations include pre-processing as discussed in "Acoustic Classificat
 Usage Example:
     import pika as p
     
-    (audio, freq, nBits) = p.load_audio(p.infile)   #here p.infile could be any desired audio file
-    p.audio_segments(audio, freq, 10, "trial.wav") 
+    (audio, freq, nBits) = p.load_audio("input.wav")
+    p.audio_segments(audio, freq, 10, "output.wav") 
 
 If you want the output aligned with the original audio (useful for debugging purposes) instead of the 
 last line in the example above use:
-    p.audio_segments(audio, freq, 10, "trial.wav", True)
+    p.audio_segments(audio, freq, 10, "output.wav", True)
 
 
 Example exploring results:
+#This may be useful to further optimize predictor, particularly in noisy scenarios
     import pika as p
     
-    (audio, freq, nBits) = p.load_audio(p.infile)   #here p.infile could be any desired audio file
-    parser = p.AudioParser(audio[10*freq:30*freq], freq) #loads in the audio from second 10 to 30
+    (audio, freq, nBits) = p.load_audio("input.wav")
+    parser = p.AudioParser(audio, freq)
     parser.pre_process()
     parser.harmonic_frequency()
     parser.plot_pika_from_harmonic() #Will show plots of the predicted results
-    #This may be useful to further optimize predictor, particularly in noisy scenarios
 """
 import numpy as np
 import pandas as pd
