@@ -42,11 +42,12 @@ def process_files_in_collection(collection):
     #For now assume each collection consists of a single observation object.  TODO implement interface
     #  so we don't have to go with that assumption, also so we can put in values for the observation fields
     observer = db.Observer.selectBy(name="Shankar Shivappa")[0]
-    observation = db.Observation(observer=observer, notes="Test Run - need to update fields if want to use")
+    observation = db.Observation(observer=observer, collection=collection,
+            notes="Test Run - need to update fields if want to use")
     mp3files = glob.glob(collection.folder + "\\*.mp3")
     
     for f in mp3files:
-        recording = db.selectBy(filename=f)
+        recording = db.Recording.selectBy(filename=f)
         if recording.count() > 0:
             if recording.count() > 1:
                 print "More than one recording record for file {}.  Please look into!" \
@@ -59,23 +60,27 @@ def process_files_in_collection(collection):
             recording = db.Recording(filename=f, observation=observation, start_time=start, 
                     duration=info.length, bitrate=info.bitrate)
     
-        process_mp3_in_chunks(recording, write_active_segments)
+        process_mp3_in_chunks(recording)
 
 
 
-def process_mp3_in_chunks(recording, fn=None, chunklength=300, temp_output='tmp{}.wav'):
-    """Splits mp3 referred to by recording into separate chunks and calls fn(temp_output) after
-    each chunk is temporarily output to temp_output.
+def process_mp3_in_chunks(recording, chunklength=300):
+    """Splits mp3 referred to by recording into separate chunks and calls processing function
+    after each chunk is temporarily output to temp_output.
     chunklength defaults to 300 seconds (5 minutes) per chunk
     """
     if recording.filename is None:
         raise Exception("No filename given for process_mp3_in_chunks")
-    if fn is None:
-        raise Exception("No function given in process_mp3_in_chunks on file {}".format(
-            recording.filename))
     
+    temp_output='tmp{}.wav'     
+    #make subdirectory for recording to store chunks in as well as preprocessed wav files
+    rootpath = os.path.dirname(recording.filename)
+    output_path = rootpath + "\\recording{}\\".format(recording.id)
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
     for count in range(0, int(recording.duration), chunklength):
-        outfilename = temp_output.format(count)
+        outfilename = output_path + temp_output.format(count)
         if count + chunklength < recording.duration:
             length = chunklength
         else:
@@ -88,55 +93,37 @@ def process_mp3_in_chunks(recording, fn=None, chunklength=300, temp_output='tmp{
             print type(inst)
             print inst.args
             print inst
-        fn(outfilename)
+        write_active_segments(outfilename, output_path, count)
 
         os.remove(outfilename)
         for f in glob.glob("output\\*"):
             os.remove(f)
 
-def write_active_segments(filename):
+def write_active_segments(filename, path, offset):
     """
     Processes audio file to find parts of the file that are active - i.e. the parts that aren't 
     just background noise.  Outputs to a file of the same name in the joined_output folder
     :filename: name of the audio file to be processed.
     """
+    
+    print "Processing {} at offset {}".format(filename, offset)
+
     intervals = find_active_segments(filename)
-    tmp_files = []
-    concat_file = "output\\concat_list.txt"
-    concat_text = ""
     output_file = "joined_output\\{}".format(filename)
     if len(intervals) == 0:
         print "No active segments found in {}".format(filename)
         return
     for i, interval in enumerate(intervals):
-        temp = "output\\bar{}.wav".format(i)
-        #print "Interval being output to {}: {}".format(temp, interval)
+        temp = path + "offset_{}.wav".format(offset + interval[0])
         try:
-            #None == None
             with open(os.devnull, 'w') as f:
                 subprocess.check_call(["ffmpeg", "-loglevel", "0", '-channel_layout', 'stereo', "-i", filename,
                     "-ss", str(interval[0]), "-t", str(interval[1]-interval[0]), temp])
-                concat_text += "file '{}'\n".format(temp)
         except Exception as inst:
             print "There was an exception writing temp file {} in write_active_segments:".format(temp)
             print type(inst)
             print inst.args
             print inst
-        else:
-            tmp_files.append(temp)
-    with open(concat_file, 'w') as f:
-        f.write(concat_text)
-    try:
-        #None == None
-        #print "Running: {}".format(" ".join(["ffmpeg", "-loglevel", "0", "-channel_layout", "stereo", 
-            #"-i", "concat:"+"|".join(tmp_files), "-c", "copy", "joined_output.wav"]))
-        subprocess.check_output(["ffmpeg", "-loglevel", "0", "-channel_layout", "mono", 
-            "-f", "concat", "-i", concat_file, "-c", "copy", output_file])
-    except Exception as inst:
-        print "There was an exception joining temp files in write_active_segments:"
-        print type(inst)
-        print inst.args
-        print inst
 
 
 def find_active_segments(filename, show_plot=False):
