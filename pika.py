@@ -38,6 +38,10 @@ import time
 infile = "May26-2014-BeaconRockSP_shankars.wav"
 infile2 = "LarchMountain_interspeciesCalls.wav"
 
+def load_and_parse(filepath):
+    (snd, freq, bits) = load_audio(filepath)
+    audio_segments(snd, freq, 10, "parsed_output/{}".format(filepath))
+
 def load_audio(filepath):
     (snd, sampFreq, nBits) = scikits.audiolab.wavread(filepath)
     if snd.ndim == 2: #get left channel if a stereo file not needed for mono
@@ -62,8 +66,10 @@ def audio_segments(audio, freq, segment_length=10,
         count, out = parser.find_pika_from_harmonic(.1, original_placement=original_placement)
         harmonic_out.extend(out)
         total += count
-    print "Total suspected calls: {}, total time (in seconds): {}".format(total, time.time() - start_time)
-    scikits.audiolab.wavwrite(np.asarray(harmonic_out), harmonic_file, freq)
+    print "Total suspected calls: {}, total processing time (in seconds): {}".format(total,
+            time.time() - start_time)
+    if total > 0:
+        scikits.audiolab.wavwrite(np.asarray(harmonic_out), harmonic_file, freq)
 
 class AudioParser(object):
     """For taking chunks of audio then pre-processing, identifying and outputting pika calls.
@@ -339,8 +345,11 @@ class AudioParser(object):
             print "Ridges after filtering out short ridges: {}".format(self.ridges)
 
         if len(self.ridges) == 0:
-            output = np.zeros(len(self.audio))
-            return 0, output
+            if original_placement:
+                output = np.zeros(len(self.audio))
+                return 0, output
+            else:
+                return 0, []
         else:
             m = max(self.audio)
             print "Number of incidents being output: {}".format(len(self.ridges))
