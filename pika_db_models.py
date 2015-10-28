@@ -88,6 +88,7 @@ class Recording(SQLObject):
 class Call(SQLObject):
     """Identified pika calls.  One record for each pika call identified during processing."""
     recording = ForeignKey("Recording")
+    verified = BoolCol(default=None)
     offset = FloatCol()
     duration = FloatCol()
     filename = StringCol()

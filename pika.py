@@ -35,20 +35,43 @@ import matplotlib.pyplot as plt
 import time
 import os
 import glob
-#from pylab import specgram
+import subprocess
+from pylab import specgram
 
 #infile = "May26-2014-BeaconRockSP4800.wav"
 infile = "May26-2014-BeaconRockSP_shankars.wav"
 #infile = "./input/July26-2014-LarchMountain/..."
 infile2 = "LarchMountain_interspeciesCalls.wav"
 
+def verify_calls(with_audio=True):
+    """Go through unverified calls, display spectogram and get input verifying
+    whether or not it is a pika call."""
+    calls = db.Call.select(db.Call.q.verified==None)
+    for call in calls[54:calls.count()]:
+        (audio, freq, bits) = load_audio(call.filename)
+        parser = AudioParser(audio, freq, debug=True)#, mpd=mpd_trial, ipd_filters=ipd_trial)
+        parser.pre_process()
+        count, offsets, output = parser.find_pika_from_harmonic()
+        specgram(audio, 1028, freq, noverlap=600)
+        plt.title("specgram of {}".format(call.filename))
+        plt.show(block=False)
+        if with_audio:
+            play_audio(call.filename);
+        raw_input("press enter to continue")
+        plt.close()
+
+def play_audio(audio):
+    subprocess.call(["ffplay", "-nodisp", "-autoexit",
+        "-loglevel", "0", "-af", "volume=20", audio])
+
+
 def examine_results(recording):
     """For debugging the results on the audio from a recording"""
     path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
     wav_files = np.array(glob.glob(path + "offset_*.wav")) #should be of the form e.g. 'offset_3.0.wav'
     
-    ipd_trial = [[50, 75], [99, 135]]
-    mpd_trial = 40
+    #ipd_trial = [[50, 75], [99, 135]]
+    #mpd_trial = 40
     
     #Sorting files based on numeric offset rather than lexicographically
     #that way we get e.g. offset_37.0.wav before offset_201.0.wav
@@ -61,7 +84,7 @@ def examine_results(recording):
     for i, f in enumerate(wav_files):
         (snd, freq, bits) = load_audio(f)
         for j, chunk in enumerate(segment_audio(snd, freq, 10)): 
-            parser = AudioParser(chunk, freq, debug=True, mpd=mpd_trial, ipd_filters=ipd_trial)
+            parser = AudioParser(chunk, freq, debug=True)#, mpd=mpd_trial, ipd_filters=ipd_trial)
             parser.pre_process()
             count, offsets, output = parser.find_pika_from_harmonic()
             offsets[:] = ["{0:.2f}".format(o) for o in offsets]
@@ -343,7 +366,7 @@ class AudioParser(object):
         self.ridges[:] = [r for r in self.ridges if r[1] - r[0] > threshold]
 
     
-    def consolidate_ridges(self, threshold=.07):
+    def consolidate_ridges(self, threshold=.1):
         """Detected calls should be in self.ridges (as done in self.harmonic_frequency).
         This function will go through the ridges and if the end of one ridge is within
         threshold seconds of the next it will combine the ridges.
