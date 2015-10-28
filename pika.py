@@ -42,6 +42,34 @@ infile = "May26-2014-BeaconRockSP_shankars.wav"
 #infile = "./input/July26-2014-LarchMountain/..."
 infile2 = "LarchMountain_interspeciesCalls.wav"
 
+def examine_results(recording):
+    """For debugging the results on the audio from a recording"""
+    path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
+    wav_files = np.array(glob.glob(path + "offset_*.wav")) #should be of the form e.g. 'offset_3.0.wav'
+    
+    ipd_trial = [[50, 75], [99, 135]]
+    mpd_trial = 40
+    
+    #Sorting files based on numeric offset rather than lexicographically
+    #that way we get e.g. offset_37.0.wav before offset_201.0.wav
+    #where is the order would be reversed in the lexicographic sort
+    just_files = np.array([os.path.basename(f) for f in wav_files])
+    audio_offsets = np.array([float(f[7:f.find(".w")]) for f in just_files])
+    wav_files = wav_files[audio_offsets.argsort()]
+    audio_offsets = audio_offsets[audio_offsets.argsort()]
+
+    for i, f in enumerate(wav_files):
+        (snd, freq, bits) = load_audio(f)
+        for j, chunk in enumerate(segment_audio(snd, freq, 10)): 
+            parser = AudioParser(chunk, freq, debug=True, mpd=mpd_trial, ipd_filters=ipd_trial)
+            parser.pre_process()
+            count, offsets, output = parser.find_pika_from_harmonic()
+            offsets[:] = ["{0:.2f}".format(o) for o in offsets]
+            print "examing results on {}".format(f)
+            parser.spectrogram(label="found {} calls at {} base file offset {}".format(count, 
+                offsets, audio_offsets[i] + j*10))
+
+
 def load_and_parse(recording):
     """Takes Recording object which should have been already preprocessed and further processes
     the results of the preprocessing looking for pika calls.
@@ -59,8 +87,17 @@ def load_audio(filepath):
     (snd, sampFreq, nBits) = scikits.audiolab.wavread(filepath)
     if snd.ndim == 2: #get left channel if a stereo file not needed for mono
         snd = [v[0] for v in snd] 
-    print "sample frequency of {}: {}".format(filepath, sampFreq)
+    #print "sample frequency of {}: {}".format(filepath, sampFreq)
     return (snd, sampFreq, nBits)
+
+def segment_audio(audio, freq, segment_length=10):
+    offset = 0
+    step_size = segment_length*freq
+    while offset < len(audio):
+        next_offset = offset + step_size
+        end = min(len(audio), next_offset)
+        yield audio[offset:end]
+        offset = next_offset
 
 def audio_segments(audio, freq, offset, recording, segment_length=10):
     """Segments audio into segment_length (in seconds) chunks and runs the 
@@ -81,22 +118,22 @@ def audio_segments(audio, freq, offset, recording, segment_length=10):
     start_time = time.time()
     path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
 
-    for i in range(0, len(audio)/freq, segment_length):
-        end = min(len(audio), (i+segment_length)*freq)
-        parser = AudioParser(audio[i*freq:end], freq)
+    for i, chunk in enumerate(segment_audio(audio, freq, segment_length)): 
+        parser = AudioParser(chunk, freq)
         parser.pre_process()
-        count, c_offsets, out = parser.find_pika_from_harmonic(.1)
+        count, call_offsets, out = parser.find_pika_from_harmonic(.1)
         harmonic_out.append(out)
         total += count
-    print "Total suspected calls: {}, total processing time (in seconds): {}".format(total,
-            time.time() - start_time)
-    if total > 0:
-        for i, call in enumerate(out):
-            c_offset = float(offset + c_offsets[i])
+        chunk_offset = i*freq
+        for j, call in enumerate(out):
+            c_offset = float(offset + chunk_offset + call_offsets[j])
             c_duration = float(len(call)*1.0/freq)
             c = db.Call(recording=recording, offset=c_offset, duration=c_duration, filename="temp")
             c.filename = path + "call{}.wav".format(c.id)
             scikits.audiolab.wavwrite(np.asarray(call), c.filename, freq)
+    
+    print "Finished processing {}\nTotal suspected calls: {}, total processing time (in seconds): {}". \
+        format(recording.filename, total, time.time() - start_time)
 
 class AudioParser(object):
     """For taking chunks of audio then pre-processing, identifying and outputting pika calls.
@@ -108,7 +145,7 @@ class AudioParser(object):
     parser.pre_process()
     parser.output_audio("pika_calls.wav")
     """
-    def __init__(self, audio, frequency, debug=False):
+    def __init__(self, audio, frequency, debug=False, mpd=None, ipd_filters=None):
         """Audio should be a single channel of raw audio data.
         """
         self.audio = audio
@@ -117,12 +154,25 @@ class AudioParser(object):
         self.fft_size = 4096
         self.step_size = self.fft_size/16
         self.factor = self.step_size*1.0/self.frequency
+        
+        if mpd is None:
+        #minimum peak distance for calculating harmonic frequencies
+            self.mpd = 50 
+        else:
+            self.mpd = mpd
+        
+        if ipd_filters is None:
+        #each ipd must fall within one of the ipd_filter ranges to be considered a successful
+        #  candidate for a pika call
+            self.ipd_filters = [[54, 75], [110, 135]] 
+        else:
+            self.ipd_filters = ipd_filters
     
     def plot_energy(self):
         plt.plot([i*self.factor for i in range(len(self.energy_envelope))], self.energy_envelope, 'ro')
         plt.show()
     
-    def spectrogram(self):
+    def spectrogram(self, label=None):
         #plt.subplot(1, 2, 1)
         #plt.imshow(np.asarray(self.fft).T, origin='lower')
         #plt.xticks(plt.xticks()[0], [str(int(t*factor)) for t in plt.xticks()[0]])
@@ -136,9 +186,12 @@ class AudioParser(object):
         #plt.xlabel("Further chopped fft")
         #plt.subplot(1, 2, 2)
         plt.imshow(np.asarray([f for f in self.processed_fft_frames]).T, origin='lower')
-        plt.xticks(plt.xticks()[0], [str(int(t*self.factor)) for t in plt.xticks()[0]])
+        plt.xticks(plt.xticks()[0], ["{0:.1f}".format(t*self.factor) for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
-        plt.xlabel("Processed FFT")
+        if label is None:
+            plt.xlabel("Processed FFT")
+        else:
+            plt.xlabel(label)
         plt.show()
 
     
@@ -249,18 +302,22 @@ class AudioParser(object):
         self.peaks = []
         current_ridge = None
         for i, f in enumerate(self.processed_fft_frames):
-            locs = peaks.detect_peaks(f, mpd=50)
+            locs = peaks.detect_peaks(f, mpd=self.mpd)
+            #if locs != []:
+                #ipd = np.convolve(locs, [1, -1])
+                #print "locs at {}: {}, ipd {}".format(i*self.factor, locs, ipd)
             self.peaks.append(locs)
             if self.debug and len(locs) > 2 and len(locs) < 3:
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 print "locs: {}".format(locs)
                 print "FEW PKS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*self.factor)
             
-            if len(locs) >= 3 and locs[0] > 30 and locs[0] < 60: 
+            #if len(locs) >= 3 and locs[0] > 30 and locs[0] < 60: 
+            if len(locs) >= 3 and locs[0] < 60: 
                 inter_peak_dist = np.convolve(locs, [1, -1])
                 harmonic_freq =  np.median(inter_peak_dist[1:-1])
-                if all((((ipd < 75) and (ipd > 55)) or
-                    ((ipd < 135) and (ipd > 110))) for ipd in inter_peak_dist[1:-1]):
+                if all(any((ipd >= bot) and (ipd <= top) for bot, top in self.ipd_filters)
+                        for ipd in inter_peak_dist[1:-1]):
                     if self.debug:
                         print "YES, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*self.factor)
                     if current_ridge is None:

@@ -21,9 +21,9 @@ import pika_db_models as db
 
 db.init_db()
 def example_work_flow():
-    input_folder = ".\input\July26-2014-LarchMountain"
-    start_date = datetime.date(2014, 7, 26) #"July 26, 2014"
-    description = "Larch Mountain"
+    input_folder = ".\input\initial_trials"
+    start_date = datetime.date(2014, 5, 26) #"July 26, 2014"
+    description = "Beacon Rock"
 
     collection = db.Collection.selectBy(folder=input_folder)
     if collection.count() > 0:
