@@ -1,34 +1,15 @@
 """
 Adapted from Shankar Shivappa's matlab HarmonicAnalysis.m code to Python
-Further adaptations include pre-processing as discussed in "Acoustic Classification of Bird Species
- from syllabels: an Emprirical Study", Briggs, Fern, and Raich; Oregon State University
+Further adaptations include pre-processing as discussed in "Acoustic Classification
+of Bird Species from syllabels: an Emprirical Study", Briggs, Fern, and Raich;
+Oregon State University
 
-Usage Example:
-    import pika as p
-    
-    (audio, freq, nBits) = p.load_audio("input.wav")
-    p.audio_segments(audio, freq, 10, "output.wav") 
-
-If you want the output aligned with the original audio (useful for debugging purposes) instead of the 
-last line in the example above use:
-    p.audio_segments(audio, freq, 10, "output.wav", True)
-
-
-Example exploring results:
-#This may be useful to further optimize predictor, particularly in noisy scenarios
-    import pika as p
-    
-    (audio, freq, nBits) = p.load_audio("input.wav")
-    parser = p.AudioParser(audio, freq)
-    parser.pre_process()
-    parser.harmonic_frequency()
-    parser.plot_pika_from_harmonic() #Will show plots of the predicted results
+Usage Example: 
 """
+#TODO provide usage examples that work with the updated code
+
 from pika_parser import AudioParser
 import numpy as np
-#import pandas as pd
-#import scipy
-#from scipy import signal
 import scikits.audiolab
 import pika_db_models as db
 import matplotlib.pyplot as plt
