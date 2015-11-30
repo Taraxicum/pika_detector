@@ -21,11 +21,21 @@ import pika_db_models as db
 
 db.init_db()
 def example_work_flow():
-    input_folder = ".\input\initial_trials"
-    start_date = datetime.date(2014, 5, 26) #"July 26, 2014"
-    description = "Beacon Rock"
+    #input_folder = ".\collections\initial_trials"
+    input_folder = ".\collections\July26-2014-LarchMountain"
+    start_date = datetime.date(2014, 7, 26) #"July 26, 2014"
+    description = "Larch Mountain"
+    observer = db.Observer.get(2) #Shankar
 
-    collection = db.Collection.selectBy(folder=input_folder)
+    collection = create_collection(input_folder, observer, start_date, description)
+    process_files_in_collection(collection)
+    
+def create_collection(foldername, observer, start_date, description):
+    if not os.path.exists(foldername):
+        raise Exception("Folder doesn't exist in attempt to create collection: {}".format(foldername))
+        return
+    
+    collection = db.Collection.selectBy(folder=foldername)
     if collection.count() > 0:
         if collection.count() > 1:
             print "More than one collection record for folder {}.  Please look into!" \
@@ -33,17 +43,16 @@ def example_work_flow():
                             collection[0].id, collection[0].description)
         collection = collection[0]
     else:
-        collection = db.Collection(folder=input_folder, start_date=start_date, description=description)
-    process_files_in_collection(collection)
-    
-    #return collection
+        collection = db.Collection(observer=observer, folder=foldername, 
+                start_date=start_date, description="Doing more testing")
+    return collection
+
 
 def process_files_in_collection(collection):
     #For now assume each collection consists of a single observation object.  TODO implement interface
     #  so we don't have to go with that assumption, also so we can put in values for the observation fields
-    observer = db.Observer.selectBy(name="Shankar Shivappa")[0]
-    observation = db.Observation(observer=observer, collection=collection,
-            notes="Test Run - need to update fields if want to use")
+    observation = db.Observation(collection=collection, notes="Test Run - need to update fields if want to use")
+    
     mp3files = glob.glob(collection.folder + "\\*.mp3")
     
     for f in mp3files:

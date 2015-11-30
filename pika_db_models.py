@@ -18,38 +18,48 @@ def init_db():
     connection = connectionForURI(connection_string)
     sqlhub.processConnection = connection
 
-def init_tables():
+def init_observers():
+    Observer(name="Jonathan Goff", institution="Pika Watch")
+    Observer(name="Shankar Shivappa", institution="Pika Watch")
+
+def init_tables(sure=False, really_sure=False):
     """NOTE: this should only work if the tables don't already exist.
     If you want to reset the database you could delete the database manually
     then run this function to initialize the tables.
     """
     if sure and really_sure:
-        Observer.createTable()
-        Observation.createTable()
-        Collection.createTable()
-        recording.createTable()
-        call.createTable()
+        Observer.createTable(True)
+        Observation.createTable(True)
+        Collection.createTable(True)
+        Recording.createTable(True)
+        Call.createTable(True)
     
-
 class Observer(SQLObject):
     name = StringCol()
     institution = StringCol(default=None)
 
 class Collection(SQLObject):
-    """Collections may include multiple observations, observers and
-    recordings all of which should originate from the same general area
-    and trip and be stored in the same input folder.  Although it is possible
-    to have multiple observers in one collection, I expect that it will
-    mostly be just one observer per collection.
+    """Collections may include recordings from multiple sublocations
+    (each sublocation counting as a different observation) within the
+    same general area and on the same trip.  They should be made by
+    a single observer so if multiple people were recording at the same
+    set of locations on a trip they should each have their own collection
+    record for their recordings on that trip.
 
-    example: Bob, Alice and Jane all go on a trip to unicorn falls and
-    observe pika at several talus slopes along the trail.  All recordings
-    made on this trip can be in the same collection.
+    example: Bob and Jane go on a trip to unicorn falls and observe pika
+    at several talus slopes along the trail.  There should be two collection
+    records - one for Bob and one for Jane.  All of the recordings Bob made
+    on the trip should be within Bob's collection (similarly for Jane).
+    Each sublocation for each of them should be its own observation record,
+    see Observation class for details on what should be included there.
     """
+    observer = ForeignKey("Observer")
     folder = StringCol()
     start_date = DateCol()
     end_date = DateCol(default=None)
     description = StringCol(default=None)
+    notes = StringCol(default=None)
+    processed = BoolCol(default=False)
 
 class Observation(SQLObject):
     """Observations should be from a single specific location with a
@@ -61,14 +71,9 @@ class Observation(SQLObject):
     
     Bob continues on and also records at the fifth talus slope.  The recordings
     there should be considered a separate observation.
-
-    Jane and Alice both make recordings at the fourth talus slope along the 
-    trail.  Since they are separate observers their observations should be
-    catalogued separately even though they are at the same location on the
-    same trip.
     """
     collection = ForeignKey("Collection")
-    observer = ForeignKey("Observer")
+    description = StringCol(default=None)
     latitude = FloatCol(default=None)
     longitude = FloatCol(default=None)
     datum = StringCol(default=None) #Should probably always be WGS84 or NAD83 (I believe are equivalent)
@@ -76,7 +81,9 @@ class Observation(SQLObject):
     notes = StringCol(default=None)
 
 class Recording(SQLObject):
-    """Individual recordings.  There should be one record for every file collected."""
+    """Individual recordings.  There should be one record for every file collected.
+    Every recording within a collection should be stored in the same folder.
+    """
     
     observation = ForeignKey("Observation")
     filename = StringCol()
@@ -84,6 +91,8 @@ class Recording(SQLObject):
     duration = FloatCol()
     bitrate = FloatCol()
     device = StringCol(default=None)
+    notes = StringCol(default=None)
+    processed = BoolCol(default=False)
 
 class Call(SQLObject):
     """Identified pika calls.  One record for each pika call identified during processing."""

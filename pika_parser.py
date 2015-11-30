@@ -10,7 +10,6 @@ class AudioParser(object):
     Example usage:
     parser = p.AudioParser(audio, freq)
     parser.pre_process()
-    parser.output_audio("pika_calls.wav")
     """
     def __init__(self, audio, frequency, debug=False, mpd=None, ipd_filters=None):
         """Audio should be a single channel of raw audio data.
@@ -19,97 +18,130 @@ class AudioParser(object):
         self.frequency = frequency
         self.debug = debug
         self.fft_size = 4096
-        self.step_size = self.fft_size/16
+        self.step_size = self.fft_size/64
         self.factor = self.step_size*1.0/self.frequency
         
         if mpd is None:
         #minimum peak distance for calculating harmonic frequencies
-            self.mpd = 50 
+            self.mpd = 40 
         else:
             self.mpd = mpd
         
         if ipd_filters is None:
         #each ipd must fall within one of the ipd_filter ranges to be 
         #considered a successful candidate for a pika call
-            self.ipd_filters = [[54, 75], [110, 135]] 
+            #self.ipd_filters = [[51, 75], [110, 135]] 
+            self.ipd_filters = [[54, 70]] 
         else:
             self.ipd_filters = ipd_filters
     
     def spectrogram(self, label=None):
         plt.imshow(np.asarray([f for f in self.processed_fft_frames]).T,
                 origin='lower')
-        plt.xticks(plt.xticks()[0], ["{0:.1f}".format(t*self.factor) 
+        plt.xticks(plt.xticks()[0], ["{0:.2f}".format(t*self.factor) 
             for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
         if label is None:
             plt.xlabel("Processed FFT")
         else:
             plt.xlabel(label)
-        plt.show()
+        plt.show(block=False)
 
     
-    def pre_process(self):
+    def pre_process(self, do_norm=True, do_filter=True, do_nr = True):
         """Transform (fft), filter, and normalize audio
         """
-        first_dim = len(self.audio)/(self.step_size) - 1
-        second_dim = 275 # fft_size/2 - fft_size/32
+        first_dim=np.ceil(1.0*(len(self.audio))/(self.step_size))
+        #second_dim = self.fft_size/2-self.fft_size/32
+        second_dim = 275
         self.fft = np.zeros((first_dim, second_dim))
-        self.processed_fft_frames = np.zeros((first_dim, second_dim+12)) 
-        for i in range(0, len(self.audio) - self.fft_size, self.step_size):
-            f = np.absolute(np.fft.fft(self.audio[i:i+self.fft_size]))
+        #self.processed_fft_frames = np.zeros((first_dim, second_dim))
+        #for i in xrange(0, len(self.audio) - self.fft_size, self.step_size):
+        for i in xrange(0, len(self.audio), self.step_size):
+            f = np.absolute(np.fft.fft(self.audio[i:i+self.fft_size],
+                self.fft_size))
             f = f[self.fft_size/32:self.fft_size/2][150:425] #This will need
                                         #to be changed if fft_size changes!
             self.fft[i/self.step_size] = f 
-        max_val = np.amax(self.fft)
-        normed_fft = self.fft/max_val
-        avg_fft = np.sum(normed_fft, axis=0)/len(normed_fft)
-        nr_fft = np.zeros_like(self.fft)
-        for i, frame in enumerate(normed_fft):
-            nr_fft[i] = [max(frame[j] - avg_fft[j], 0) for j, v in enumerate(frame)] #noise-reduction
+        if do_norm:
+            max_val = np.amax(self.fft)
+            self.fft = self.fft/max_val
         
-        f_mean = np.mean(normed_fft)
+        if do_nr: #noise-reduction
+            avg_fft = np.sum(self.fft, axis=0)/len(self.fft)
+            nr_fft = np.zeros_like(self.fft)
+            for i, frame in enumerate(self.fft):
+                self.fft[i] = [max(frame[j] - avg_fft[j], 0)
+                        for j, v in enumerate(frame)] 
         
-        threshold = .05
-        tf = [[x if x > f_mean + threshold else 0.0 for x in f] for f in nr_fft] 
-        self.processed_fft_frames = tf
+        if do_filter:
+            f_mean = np.mean(self.fft)
+            threshold = .05
+            self.fft = [[x if x > f_mean + threshold else 0.0 for x in f]
+                    for f in self.fft] 
+        self.processed_fft_frames = self.fft
 
-    def harmonic_frequency(self):
-        """Uses harmonic frequencies to attempt to identify locations of pika calls
+    def score_frame(self, frame, i):
+        """Scores a frame for how likely it seems to be part of a pika call
+        :frame: numpy 1d array fft frame
+        :returns likeliness score
         """
-        self.ridges = []
-        self.peaks = []
-        current_ridge = None
-        for i, f in enumerate(self.processed_fft_frames):
-            locs = peaks.detect_peaks(f, mpd=self.mpd)
-            if self.debug:
-                if locs != []:
-                    ipd = np.convolve(locs, [1, -1])
-                    print "locs at {}: {}, ipd {}".format(i*self.factor, locs, ipd)
-            self.peaks.append(locs)
-            if self.debug and len(locs) > 2 and len(locs) < 3:
-                inter_peak_dist = np.convolve(locs, [1, -1])
-                print "locs: {}".format(locs)
-                print "FEW PKS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*self.factor)
+        score = 0.0
+        locs = peaks.detect_peaks(frame, mpd=self.mpd)
+        if self.debug:
+            if len(locs) == 0:
+                1+2 == 3
+                #print "no peaks detected at {:.3f}".format(i*self.factor)
+            else:
+                ipd = np.convolve(locs, [1, -1])
+                print "t: {:.3f}, ipd {}".format(i*self.factor, ipd)
+        
+        if len(locs) >= 3 and locs[0] < 75: 
+            ipd = np.convolve(locs, [1, -1])
+            #harmonic_freq =  np.median(ipd[1:-1])
+            amount = 3.0/(len(locs) - 2)
+            for x in ipd:
+                if any((x >= bot) and (x <= top) for bot, top in self.ipd_filters):
+                    score += amount
+
             
-            if len(locs) >= 3 and locs[0] < 60: 
-                inter_peak_dist = np.convolve(locs, [1, -1])
-                harmonic_freq =  np.median(inter_peak_dist[1:-1])
-                if all(any((ipd >= bot) and (ipd <= top) for bot, top in self.ipd_filters)
-                        for ipd in inter_peak_dist[1:-1]):
-                    if self.debug:
-                        print "YES, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*self.factor)
-                    if current_ridge is None:
-                        current_ridge = i*self.factor
-                elif current_ridge is not None:
-                    self.ridges.append([current_ridge, i*self.factor])
+            #if all(any((ipd >= bot) and (ipd <= top) for bot, top in self.ipd_filters)
+            #        for ipd in inter_peak_dist[1:-1]):
+        return score
+    
+    def harmonic_frequency(self):
+        """
+        Uses harmonic frequencies to attempt to identify locations of pika calls
+        """
+        frame_scores = []
+        for i, f in enumerate(self.processed_fft_frames):
+            frame_scores.append(self.score_frame(f, i))
+        if len(frame_scores) > 0:
+            frame_scores = np.convolve(frame_scores,
+                    [.5, .5, .5, .5, .5, .5, .5, .5, .5, .5], mode='same')
+        if self.debug:
+            print "Frame scores\n{}".format(frame_scores)
+        self.ridges = self.find_ridges(frame_scores)
+        #TODO rather than manually doing ridges in the frame scoring
+        #process, try convolving along the frame scores and filter
+        #on a particular threshold to find ridges of likely calls
+    
+    def find_ridges(self, scores):
+        #scores = [1 if x > threshold else 0 for x in scores]
+        ridges = []
+        current_ridge = None
+        threshold = 10.5
+        for i, s in enumerate(scores):
+            if current_ridge is not None:
+                if s < threshold:
+                    ridges.append([current_ridge, (i -1)*self.factor])
                     current_ridge = None
-                elif self.debug:
-                    print "WRONG H-FREQS, ipd: {}, i: {}, time: {}".format(inter_peak_dist, i, i*self.factor)
-            elif current_ridge is not None:
-                self.ridges.append([current_ridge, i*self.factor])
-                current_ridge = None
-        if current_ridge is not None: 
-            self.ridges.append([current_ridge, len(self.processed_fft_frames)*self.factor])
+            else:
+                if s > threshold:
+                    current_ridge = i*self.factor
+        if current_ridge is not None:
+            ridges.append([current_ridge, len(scores)*self.factor])
+        return ridges
 
     def filter_short_ridges(self, threshold=.10):
         """
@@ -125,7 +157,7 @@ class AudioParser(object):
         self.ridges[:] = [r for r in self.ridges if r[1] - r[0] > threshold]
 
     
-    def consolidate_ridges(self, threshold=.1):
+    def consolidate_ridges(self, threshold=.02):
         """
         Detected calls should be in self.ridges (as done in 
           self.harmonic_frequency).
@@ -181,7 +213,7 @@ class AudioParser(object):
             plt.show()
     
     
-    def find_pika_from_harmonic(self, buffer_length=.01):
+    def find_pika_from_harmonic(self, buffer_length=.10):
         """pre_process() must have been called first.
         :returns list containing segments of self.audio thought to contain 
           pika calls with buffer_length (in seconds) space on each side of the 
