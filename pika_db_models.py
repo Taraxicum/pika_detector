@@ -14,9 +14,12 @@ def init_db():
     #db_filename = os.path.abspath('pika.db')
     #if os.path.exists(db_filename):
         #os.unlink(db_filename)
-    connection_string = "sqlite:/D:/Workspace/pika/pika.db"
-    connection = connectionForURI(connection_string)
-    sqlhub.processConnection = connection
+    try:
+        sqlhub.processConnection
+    except AttributeError:
+        connection_string = "sqlite:/D:/Workspace/pika/pika.db"
+        connection = connectionForURI(connection_string)
+        sqlhub.processConnection = connection
 
 def init_observers():
     Observer(name="Jonathan Goff", institution="Pika Watch")
@@ -37,6 +40,7 @@ def init_tables(sure=False, really_sure=False):
 class Observer(SQLObject):
     name = StringCol()
     institution = StringCol(default=None)
+    collections = MultipleJoin('Collection')
 
 class Collection(SQLObject):
     """Collections may include recordings from multiple sublocations
@@ -60,6 +64,7 @@ class Collection(SQLObject):
     description = StringCol(default=None)
     notes = StringCol(default=None)
     processed = BoolCol(default=False)
+    observations = MultipleJoin('Observation')
 
 class Observation(SQLObject):
     """Observations should be from a single specific location with a
@@ -79,6 +84,7 @@ class Observation(SQLObject):
     datum = StringCol(default=None) #Should probably always be WGS84 or NAD83 (I believe are equivalent)
     count_estimate = IntCol(default=None)
     notes = StringCol(default=None)
+    recordings = MultipleJoin('Recording')
 
 class Recording(SQLObject):
     """Individual recordings.  There should be one record for every file collected.
@@ -93,6 +99,7 @@ class Recording(SQLObject):
     device = StringCol(default=None)
     notes = StringCol(default=None)
     processed = BoolCol(default=False)
+    calls = MultipleJoin("Call")
 
 class Call(SQLObject):
     """Identified pika calls.  One record for each pika call identified during processing."""
