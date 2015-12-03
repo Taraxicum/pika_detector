@@ -17,8 +17,9 @@ Usage Example:
 """
 #TODO provide usage examples that work with the updated code
 
-from pika_parser import AudioParser
-import utility as u
+import ui_utility as u
+import processing as p
+import find_peaks as peaks
 import numpy as np
 import scikits.audiolab
 import pika_db_models as db
@@ -50,193 +51,177 @@ def init_collection_and_associated_recordings():
             start_date=start_date, end_date=end_date,
             description=description, notes=notes)
 
-    set_observations(collection)
+    u.set_observations(collection)
     return collection
 
 def preprocess_collection(collection):
+    """
+    Processes collection of recordings to get into manageable sized pieces and do 
+        initial filter to remove sections of audio that don't have interesting sound in
+        import pika call spectrum.
+    :collection: collection of observations -> recordings to be processed
+    modifies: creates files in recordingN subfolder of collection's folder where N is the
+    id of the recording object in the database so there will be a subfolder for each 
+    recording in collection.  Within the subfolder will be audio files named offset_nn.n.wav
+    where nn.n is the offset in seconds of where the file was found in the original recording.
+    """
     for observation in collection.observations:
         for recording in observation.recordings:
             rootpath = os.path.dirname(recording.filename)
-            output_path = rootpath + "\\recording{}\\".format(recording.id)
+            output_path = rootpath + "/recording{}/".format(recording.id)
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             
             for chunk, offset in chunk_recording(recording):
-                write_active_segments(chunk, output_path, offset)
+                p.write_active_segments(chunk, output_path, offset)
 
-def write_active_segments(filename, path, offset):
-    """
-    Processes audio file to find parts of the file that are active - i.e. the parts that aren't 
-    just background noise.  Outputs files to path folder with file named offset_{}.wav where the
-    {} is the offset position calculated by the offset parameter passed in + the offset of the
-    segment relative to the audio in filename.
+def identify_calls(collection):
+    for observation in collection.observations:
+        for recording in observation.recordings:
+            chunk_files = get_recording_chunk_files(recording)
+            for f in chunk_files:
+                identify_and_write_calls(recording, f)
 
-    :filename: name of the audio file to be processed.
-    :path: path of folder to write output to
-    :offset: base offset for filename; in general it is expected that the original file will be
-        broken into smaller chunks initially and this function will be applied to those chunks,
-        so the offset would be the offset of the chunk in the recording
-    """
-    intervals = find_active_segments(filename)
-    if len(intervals) == 0:
-        print "No active segments found in {}".format(filename)
-        return
-    for i, interval in enumerate(intervals):
-        outfile = path + "offset_{}.wav".format(offset + interval[0])
-        try:
-            with open(os.devnull, 'w') as f:
-                subprocess.check_call(["ffmpeg", "-loglevel", "0", '-channel_layout', 'stereo', "-i", filename,
-                    "-ss", str(interval[0]), "-t", str(interval[1]-interval[0]), outfile])
-        except Exception as inst:
-            print "There was an exception writing temp file {} in write_active_segments:".format(outfile)
-            print type(inst)
-            print inst.args
-            print inst
-
-def find_active_segments(filename, verbose=0):
-    """Returns array of intervals of audio that have magnitude above a threshold
-    background noise.  If a segment of the audio is more than .5 seconds from
-    a sound over the threshold it will not be included in the output
-    :filename: audio file to be used - should be wav file
-    :returns: array of intervals e.g. [[5, 157], [990, 1105]] of time in seconds
-    (floor of start value, ceiling of end value) corresponding to louder sections
-    of the audio
-    """
-    if verbose > 0:
-        start_time = time.time()
-    (snd, freq, nbits) = scikits.audiolab.wavread(filename)
-    if snd.ndim == 2:
-        snd = [v[0] for v in snd]
+def identify_and_write_calls(recording, audio_file):
     fft_size = 4096
-    step_size = fft_size/2
-    first_dim = len(snd)/(step_size) - 1
+    step_size = fft_size/64
+    for audio, offset in load_audio_in_chunks(audio_file):
+        fft = filtered_fft(audio, recording.bitrate, fft_size, step_size)
+        frame_scores = score_fft(fft)
+        good_intervals = find_passing_intervals(frame_scores,
+                step_size*1.0/recording.bitrate)
+        write_calls(recording, audio, offset, good_intervals)
+    return
+
+def score_fft(fft, debug=False):
+    """Scores frames for how likely they seem to be part of a pika call
+    :fft: numpy 2d array fft
+    :debug: if True outputs statements to help debug scoring process
+    :returns 1d array of likeliness scores corresponding to the frames
+    """
+    ipd_filters = [[54, 70], [110, 135]] #inter peak distance filters
+    mpd = 40 #minimum peak distance
+    scores = []
+    for i, frame in enumerate(fft):
+        score = 0.0
+        locs = peaks.detect_peaks(frame, mpd=mpd)
+        if debug:
+            if len(locs) != 0:
+                ipd = np.convolve(locs, [1, -1])
+                print "t: {:.3f}, ipd {}".format(i*self.factor, ipd)
+        
+        if len(locs) >= 3 and locs[0] < 75: 
+            ipd = np.convolve(locs, [1, -1])
+            amount = 3.0/(len(locs) - 2)
+            for x in ipd:
+                if any((x >= bot) and (x <= top) for bot, top in ipd_filters):
+                    score += amount
+
+        scores.append(score)
+    return scores
+
+def find_passing_intervals(frame_scores, factor):
+    """
+    :frame_scores: pika call likelihood scores of fft frames.
+    :returns list of intervals that are likely to contain a pika call
+    """
+    scores = np.convolve(frame_scores,
+            [.5, .5, .5, .5, .5, .5, .5, .5, .5, .5], mode='same')
+    ridges = []
+    current_ridge = None
+    threshold = 10.5
+    for i, s in enumerate(scores):
+        if current_ridge is not None:
+            if s < threshold:
+                ridges.append([current_ridge, (i -1)*factor])
+                current_ridge = None
+        else:
+            if s > threshold:
+                current_ridge = i*factor
+    if current_ridge is not None:
+        ridges.append([current_ridge, len(scores)*factor])
+    min_ridge_length = .1
+    ridges[:] = [r for r in ridges if r[1] - r[0] > min_ridge_length]
+    return ridges
+
+def load_audio_in_chunks(audio_file, chunksize=10):
+    (audio, bitrate, nBits) = scikits.audiolab.wavread(audio_file)
+    if audio.ndim == 2: #get left channel if a stereo file not needed for mono
+        audio = [v[0] for v in audio] 
+    #print "sample frequency of {}: {}".format(filepath, sampFreq)
+    for chunk, offset in p.segment_audio(audio, bitrate, chunksize):
+        yield chunk, offset
+
+def filtered_fft(audio, bitrate, fft_size, step_size):
+    first_dim=np.ceil(1.0*(len(audio))/(step_size))
     second_dim = 275
     fft = np.zeros((first_dim, second_dim))
-    threshold_distance = .5*freq/step_size #seconds worth of steps
-    factor = step_size*1.0/freq
-
-    for i in range(0, len(snd) - fft_size, step_size):
-        f = np.absolute(np.fft.fft(snd[i:i+fft_size]))
-        fft[i/step_size] = f[fft_size/32:fft_size/2][150:425]
+    for i in xrange(0, len(audio), step_size):
+        f = np.absolute(np.fft.fft(audio[i:i+fft_size], fft_size))
+        f = f[fft_size/32:fft_size/2][150:425] #This will need
+                                    #to be changed if fft_size changes!
+        fft[i/step_size] = f 
+    
+    #normalize
     max_val = np.amax(fft)
-    fft /= max_val
+    fft = fft/max_val
     
-    avg_magnitude = np.mean(fft)
-    max_to_mean = np.divide(np.max(fft, axis=1), np.mean(fft, axis=1))
-    threshold = 4.5
-    above_threshold = [1 if x > threshold else 0 for x in max_to_mean]
-    above_threshold = np.convolve(above_threshold, np.ones(threshold_distance), 'same')
+    #noise-reduction
+    avg_fft = np.sum(fft, axis=0)/len(fft)
+    for i, frame in enumerate(fft):
+        fft[i] = [max(frame[j] - avg_fft[j], 0) for j, v in enumerate(frame)] 
     
-    intervals = get_intervals(above_threshold, factor)
-    if verbose > 0: 
-        print "Total length kept {}".format(total_segment_length(intervals))
-        print "time taken {}".format(time.time() - start_time)
-    return intervals    
+    #filter out quiet parts
+    f_mean = np.mean(fft)
+    threshold = .05
+    return [[x if x > f_mean + threshold else 0.0 for x in f] for f in fft] 
 
-def get_intervals(segments, factor):
-    """Looks for positive intervals in list of segments and returns list of 
-    the intervals scaled to where they are located in seconds.
-    :segments: list of values under consideration.  Generally here they will be
-    some value derived from the fft of audio data.
-    :factor: value to convert between position in the segments list and
-    position in the audio file in seconds.
-    :returns list of intervals (with endpoints rounded to integer values)
-    corresponding to the times in the audio file where the values in segments 
-    are non-zero.  Before being returned calls reduce_intervals to combine
-    segments with overlap that result from the rounding of the endpoints.
+
+def write_calls(recording, audio, offset, intervals):
     """
-    intervals = []
-    interval_start = None
-    for i, val in enumerate(segments):
-        if interval_start is None:
-            if val > 0:
-                interval_start = np.floor(i*factor)
-        elif val == 0:
-            intervals.append([interval_start, np.ceil(i*factor)])
-            interval_start = None
-    if interval_start is not None:
-        intervals.append([interval_start, np.ceil(factor*len(segments))])
-    #print intervals
-    return reduce_intervals(intervals)
+    :recording: recording object being processed
+    :audio: audio file chunk being processed
+    :offset: offset of audio with respect to the original recording
+    :intervals: list of intervals in seconds (e.g. [[2.4, 2.71], [5.9, 6.18]])
+    where audio contains identified pika calls
+
+    Creates Call objects for each of the intervals and writes the call audio
+    as a wav file into a call subdirectory of the recording directory with
+    filename callN.wav where N is the call id in the database.
+    """
+
+    output_path = os.path.dirname(recording.filename) + "/recording{}" \
+    "/calls/".format(recording.id)
+    bitrate = recording.bitrate
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
     
-def reduce_intervals(intervals):
+    for interval in intervals:
+        c_offset = float(offset + interval[0])
+        c_duration = float(interval[1] - interval[0])
+        c = db.Call(recording=recording, offset=c_offset, duration=c_duration, filename="temp")
+        c.filename = output_path + "call{}.wav".format(c.id)
+        scikits.audiolab.wavwrite(np.asarray(audio[int(interval[0]*bitrate):int(interval[1]*bitrate)]),
+                c.filename, recording.bitrate)
+
+def get_recording_chunk_files(recording):
     """
-    :intervals: a list of intervals that may have overlapping endpoints but
-    where if [a, b] occurs before [c, d] in the list then a <= c.
-    :returns list of intervals with overlaps combined so that now if
-    [a, b] occurs before [c, d] in the returned list, then b < c.
+    Returns numpy array of offset_*.wav files corresponding to recording (created
+    from preprocessing the recording that occurs in the preprocess_collection
+    method).
+    The array is sorted in order of the offsets numerically rather than 
+    lexicographically that way we get e.g. offset_37.0.wav before offset_201.0.wav
+    where as the order would be reversed in the lexicographic sort.
     """
-    reduced_intervals = []
-    interval_start = None
-    for s in intervals:
-        if interval_start is not None:
-            if s[0] <= interval_end:
-                #print "Overlap old {}, new {}".format(current_segment_end, s)
-                interval_end = s[1]
-            else:
-                #print "NO overlap old {}, new {}".format(current_segment_end, s)
-                reduced_intervals.append([interval_start, interval_end])
-                interval_start = s[0]
-                interval_end = s[1]
-        else:
-            interval_start = s[0]
-            interval_end = s[1]
-    if interval_start is not None:
-        reduced_intervals.append([interval_start, intervals[-1][1]])
-    return reduced_intervals
+    rootpath = os.path.dirname(recording.filename) + \
+    "/recording{}/".format(recording.id)
+    wav_files = np.array(glob.glob(rootpath + "offset_*.wav"))
+    base_files = [os.path.basename(f) for f in wav_files]
+    audio_offsets = np.array([float(f[7:f.find(".w")]) for f in base_files])
+    wav_files = wav_files[audio_offsets.argsort()]
+    return wav_files
 
-
-def chunk_recording(recording, segment_length=300):
-    """iterator: iterates through recording segment_length seconds at a time
-    using ffmpeg to create a temp file of the audio chunk
-    yields the temp filename, offset
-    """
-    offset = 0
-    step_size = int(segment_length*recording.bitrate)
-    outfile = "temp/temp.wav"
-    
-    while offset < recording.duration:
-        next_offset = offset + step_size
-        end = min(int(recording.duration), next_offset)
-        length = end - offset
-        subprocess.check_output(["ffmpeg", "-loglevel", "0", "-channel_layout", "stereo",
-            "-i", recording.filename, "-ss", str(offset), "-t", str(length), outfile])
-        
-        yield outfile, offset
-        offset = next_offset
-
-def set_observations(collection):
-    mp3files = glob.glob(collection.folder + "\\*.mp3")
-    while len(mp3files) > 0:
-        print("\n".join(["{}: {}".format(i, f) for i, f in enumerate(mp3files)]))
-        file_numbers = raw_input("Which files should be part of the first observation?")
-        file_numbers = [int(v) for v in re.split(', |\s|,', file_numbers)]
-        print("The following files were selected:\n{}".format("\n".join([mp3files[f]
-            for f in file_numbers])))
-        description = u.get_text("Short description of observation: ")
-        notes = u.get_text("More detailed notes about observation: ")
-        count_estimate = u.get_count_estimate()
-        latitude = u.get_latitude()
-        longitude = u.get_longitude()
-        observation = db.Observation(collection=collection, description=description,
-                notes=notes, count_estimate=count_estimate, 
-                latitude=latitude, longitude=longitude)
-        for f in [mp3files[n] for n in file_numbers]:
-            set_recording(observation, f)
-            mp3files.remove(f)
-
-def set_recording(observation, mp3):
-    #Going to assume an existing recording object for the given mp3 does not already exist
-    # would be more defensive to check for it, but since the collection object it descends from
-    # is already checked for prior existence, the recording *should* be safe as well
-    start = datetime.datetime.fromtimestamp(os.path.getmtime(mp3))
-    print("For the recording {}, start time found as {}".format(mp3, start))
-    if not confirm("Is that the correct start time?"):
-        start = u.get_start_time()
-    info = mutagen.mp3.MP3(mp3).info
-    recording = db.Recording(filename=mp3, observation=observation, start_time=start, 
-            duration=info.length, bitrate=info.bitrate)
-    return
 
 ###############Old code below, refactored code above################
 def examine_calls(calls=None, with_audio=True, debug=False, mpd=None):
@@ -309,7 +294,7 @@ def play_audio(audio, vol_mult=20):
 
 def examine_results(recording, debug=True):
     """For debugging the results on the audio from a recording"""
-    path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
+    path = os.path.dirname(recording.filename) + "/recording{}/".format(recording.id)
     wav_files = np.array(glob.glob(path + "offset_*.wav")) #should be of the form e.g. 'offset_3.0.wav'
     
     #ipd_trial = [[50, 75], [99, 135]]
@@ -342,7 +327,7 @@ def load_and_parse(recording):
     further processes the results of the preprocessing looking for pika calls.
     :recording: Recording db object
     """
-    path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
+    path = os.path.dirname(recording.filename) + "/recording{}/".format(recording.id)
     wav_files = glob.glob(path + "offset_*.wav") #should be of the form e.g. 'offset_3.0.wav'
     for f in wav_files:
         just_file = os.path.basename(f)
@@ -386,7 +371,7 @@ def audio_segments(audio, freq, file_offset, recording, segment_length=10):
     harmonic_out = []
     total = 0
     start_time = time.time()
-    path = os.path.dirname(recording.filename) + "\\recording{}\\".format(recording.id)
+    path = os.path.dirname(recording.filename) + "/recording{}/".format(recording.id)
 
     for i, chunk in enumerate(segment_audio(audio, freq, segment_length)): 
         parser = AudioParser(chunk, freq)

@@ -3,9 +3,10 @@ import find_peaks as peaks
 import matplotlib.pyplot as plt
 
 class AudioParser(object):
-    """For taking chunks of audio then pre-processing, identifying and outputting pika calls.
-    Long sections of audio are tough on memory usage, so pre-chopping longer audio into 10 second
-    or so chunks is recommended.
+    """For taking chunks of audio then changing to frequency domain and
+    filtering, identifying and outputting pika calls.
+    Long sections of audio are tough on memory usage, so pre-chopping longer
+    audio into 10 second or so chunks is recommended.
     
     Example usage:
     parser = p.AudioParser(audio, freq)

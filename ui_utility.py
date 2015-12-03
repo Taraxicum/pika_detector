@@ -8,39 +8,6 @@ import datetime
 import os
 import pika_db_models as db
 
-def set_observations(collection):
-    mp3files = glob.glob(collection.folder + "\\*.mp3")
-    while len(mp3files) > 0:
-        print("\n".join(["{}: {}".format(i, f) for i, f in enumerate(mp3files)]))
-        file_numbers = raw_input("Which files should be part of the first observation?")
-        file_numbers = [int(v) for v in re.split(', |\s|,', file_numbers)]
-        print("The following files were selected:\n{}".format("\n".join([mp3files[f]
-            for f in file_numbers])))
-        description = u.get_text("Short description of observation: ")
-        notes = u.get_text("More detailed notes about observation: ")
-        count_estimate = u.get_count_estimate()
-        latitude = u.get_latitude()
-        longitude = u.get_longitude()
-        observation = db.Observation(collection=collection, description=description,
-                notes=notes, count_estimate=count_estimate, 
-                latitude=latitude, longitude=longitude)
-        for f in [mp3files[n] for n in file_numbers]:
-            set_recording(observation, f)
-            mp3files.remove(f)
-
-def set_recording(observation, mp3):
-    #Going to assume an existing recording object for the given mp3 does not already exist
-    # would be more defensive to check for it, but since the collection object it descends from
-    # is already checked for prior existence, the recording *should* be safe as well
-    start = datetime.datetime.fromtimestamp(os.path.getmtime(mp3))
-    print("For the recording {}, start time found as {}".format(mp3, start))
-    if not confirm("Is that the correct start time?"):
-        start = u.get_start_time()
-    info = mutagen.mp3.MP3(mp3).info
-    recording = db.Recording(filename=mp3, observation=observation, start_time=start, 
-            duration=info.length, bitrate=info.bitrate)
-    return
-
 
 def confirm(prompt):
     while True:
