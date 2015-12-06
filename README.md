@@ -1,29 +1,14 @@
 # pika_detector 
-Code to detect pika (*Ochonta princeps*) calls in audio file.
+This code is setup to create database entries and files around identifying pika (*Ochonta princeps*) calls in collections of audio files.  It will collect/ask for meta data including who collected the audio, locations, descriptions, etc.
 
-There are two versions of code: the original matlab code created by Shankar and the Python version I have been adapting from it.
+Some external libraries and tools are required - see setup_process.txt for notes about what else needs to be installed.
 
 #### Basic usage example
-The following will process the input.wav in 10 second chunks, then combine the results into output.wav.  There may be detection issues for a call if it happens to fall over the boundary between segments.
-    
-    import pika as p
-    
-    (audio, freq, nBits) = p.load_audio("input.wav")
-    p.audio_segments(audio, freq, 10, "output.wav") 
-
-If you want the output aligned with the original audio (useful for debugging purposes) instead of the 
-last line in the example above use:
-
-    p.audio_segments(audio, freq, 10, "output.wav", True)
-
-
-#### Example exploring results visually
-The following will show plots of predicted pika calls found in input.wav
+For initializing a collection you should have the mp3s in an accessible folder and be ready with whatever notes/gps coordinates/etc. you have for the collection, then in an ipython console the following code will take you through creation of the collection all the way to verifying the calls that were identified (optional):
 
     import pika as p
-    
-    (audio, freq, nBits) = p.load_audio("input.wav")
-    parser = p.AudioParser(audio, freq)
-    parser.pre_process()
-    parser.harmonic_frequency()
-    parser.plot_pika_from_harmonic()
+    collection = p.init_collection_and_associated_recordings()
+    p.preprocess_collection(collection)
+    p.identify_and_write_calls(collection)
+    p.verify_calls(collection)
+

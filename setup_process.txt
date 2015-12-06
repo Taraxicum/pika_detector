@@ -1,0 +1,39 @@
+external python libraries include:
+scikits.audiolab
+numpy
+mutagen
+
+external tools include:
+sqlite3
+ffmpeg
+
+Libraries/tools requiring extra install information are detailed below. I believe other libraries were successfully installed with pip, e.g. "pip install mutagen"
+
+
+scikits audiolab 7/30/2015
+A bit frustrating to get setup.  I tried a few different things and I think the following is what worked:
+(note I already have python 2.7 installed on my windows 7 system)
+
+  1) Download scikits.audiolab-0.11.0-cp27-none-win32.whl 
+	(note 32 bit version, I tried 64 bit but I guess since my python is 32bit - though my system is 64bit - the 32 was the correct choice)
+
+  2) Install that .whl file by running:
+	pip install scikits.audiolab-0.11.0-cp27-none-win32.whl from the directory the file was in
+
+  3)  I think that might be it? 
+	12/6/2015 *note* I think libsndfile is no longer needed in favor of ffmpeg, but I am not
+100% sure about that at the moment.
+
+	One other thing to look for if that doesn't work is the libsndfile: http://www.mega-nerd.com/libsndfile/ An installer can be downloaded from that site and if necessary the appropriate lib file can be moved to somewhere python can find it.  I had played around with that part before trying the .whl file above.  After installing the .whl file I went into the created directory structure (in the python folders) in order to put the libsndfile dll in the suggested directory only to find it already there.  So not sure if it was packaged in the .whl or if it found it already installed and took care of it for me.
+
+
+9/28/2015
+
+4) install ffmpeg (trying to get utilities set up to process larger audio files without
+loading all into memory at once) - downloaded binary from: http://ffmpeg.zeranoe.com/builds/win64/static/ffmpeg-20150928-git-235381e-win64-static.7z
+
+usage examples at: http://howto-pages.org/ffmpeg/
+
+10/16/2015
+
+5) sqlite: download precompiled binaries from https://www.sqlite.org/download.html (both the shell and the dll file).  Extract them to a folder of your choice and add that folder to your path.
