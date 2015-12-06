@@ -9,6 +9,8 @@ http://sqlobject.org/SQLObject.html
 
 from sqlobject import *
 import sys
+import os
+import numpy as np
 
 def init_db():
     #db_filename = os.path.abspath('pika.db')
@@ -100,6 +102,30 @@ class Recording(SQLObject):
     notes = StringCol(default=None)
     processed = BoolCol(default=False)
     calls = MultipleJoin("Call")
+    
+    def get_unverified_calls(self):
+        return Call.select(AND(Call.q.verified==None,
+                Call.q.recordingID == self.id))
+    
+    def output_folder(self):
+        return os.path.dirname(self.filename) + "/recording{}/".format(self.id)
+    
+    def chunked_files(self):
+        """
+        Returns numpy array of offset_*.wav files corresponding to recording 
+        (created from preprocessing the recording that occurs in the 
+        pika.preprocess_collection method).
+        The array is sorted in order of the offsets numerically rather than 
+        lexicographically that way we get e.g. offset_37.0.wav before 
+        offset_201.0.wav where as the order would be reversed in the 
+        lexicographic sort.
+        """
+        wav_files = np.array(glob.glob(self.output_folder() + "offset_*.wav"))
+        base_files = [os.path.basename(f) for f in wav_files]
+        audio_offsets = np.array([float(f[7:f.find(".w")]) for f in base_files])
+        wav_files = wav_files[audio_offsets.argsort()]
+        return wav_files
+        
 
 class Call(SQLObject):
     """Identified pika calls.  One record for each pika call identified during processing."""

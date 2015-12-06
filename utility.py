@@ -4,6 +4,7 @@ Mostly UI helper functions
 
 """
 import glob
+import subprocess
 import datetime
 import os
 import pika_db_models as db
@@ -161,3 +162,34 @@ def get_collection_folder():
                             "the collection initialization to proceed.".format(folder))
                 print "Collection folder contains {} mp3 files".format(len(mp3files))
     return folder
+
+def get_verification(call):
+    """Return false if quit otherwise return True when valid response given"""
+    volume_mult = 20
+    while True:
+        print "Verify as pika call?"
+        r = raw_input("(Y)es/(N)o/(S)kip/(R)eplay/(L)ouder/(Q)uit (then press enter)")
+        r = r.lower()
+        if r == "q":
+            return False
+        if r == "y":
+            call.verified = True
+            return True
+        elif r == "n":
+            call.verified = False
+            return True
+        elif r == "s":
+            return True
+        elif r == "l":
+            volume_mult += 5
+            play_audio(call.filename, volume_mult)
+        elif r == "r":
+            play_audio(call.filename, volume_mult)
+            print "Call has been replayed"
+
+
+def play_audio(audio, vol_mult=20):
+    subprocess.call(["ffplay", "-nodisp", "-autoexit",
+        "-loglevel", "0", "-af", "volume={}".format(vol_mult), audio])
+
+
