@@ -7,16 +7,18 @@ Oregon State University
 Usage Example: 
     For initializing a collection you should have the mp3s in an accessible folder and be
     ready with whatever notes/gps coordinates/etc. you have for the collection, 
-    then in ipython console:
+    then in ipython console the following code will take you through creation of the collection
+    all the way to verifying identified calls:
     
         import pika as p
-        p.init_collection_and_associated_recordings()
+        collection = p.init_collection_and_associated_recordings()
+        p.preprocess_collection(collection)
+        p.identify_and_write_calls(collection)
+        p.verify_calls(collection)
 
     The script will prompt you for the needed information.
     
 """
-#TODO provide usage examples that work with the updated code
-
 import pika_parser as pp
 import ui_utility as u
 import processing as p
@@ -59,18 +61,17 @@ def preprocess_collection(collection):
             for chunk, offset in chunk_recording(recording):
                 p.write_active_segments(chunk, output_path, offset)
 
-def identify_calls(collection):
+def identify_and_write_calls(collection):
     for observation in collection.observations:
         for recording in observation.recordings:
             for f in recording.chunked_files:
-                identify_and_write_calls(recording, f)
+                parser = pp.PikaParser(recording, f)
+                parser.identify_and_write_calls()
 
-def identify_and_write_calls(recording, audio_file):
-    parser = pp.PikaParser(recording, audio_file)
-    parser.identify_and_write_calls()
-
-def verify_calls(recording):
-    for call in recording.get_unverified_calls():
-        parser = pp.PikaParser(recording, call.filename)
-        if not parser.verify_call(call):
-            return
+def verify_calls(collection):
+    for observation in collection.observations:
+        for recording in observation.recordings:
+            for call in recording.get_unverified_calls():
+                parser = pp.PikaParser(recording, call.filename)
+                if not parser.verify_call(call):
+                    return
