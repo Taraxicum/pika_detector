@@ -163,9 +163,11 @@ def get_collection_folder():
                 print "Collection folder contains {} mp3 files".format(len(mp3files))
     return folder
 
-def get_verification(call):
+def get_verification(call, with_audio=True):
     """Return false if quit otherwise return True when valid response given"""
     volume_mult = 20
+    if with_audio:
+        play_audio(call.filename, volume_mult)
     while True:
         print "Verify as pika call?"
         r = raw_input("(Y)es/(N)o/(S)kip/(R)eplay/(L)ouder/(Q)uit (then press enter)")
@@ -185,7 +187,6 @@ def get_verification(call):
             play_audio(call.filename, volume_mult)
         elif r == "r":
             play_audio(call.filename, volume_mult)
-            print "Call has been replayed"
 
 
 def play_audio(audio, vol_mult=20):

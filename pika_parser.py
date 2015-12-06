@@ -7,15 +7,22 @@ import processing as p
 import os
 
 class PikaParser(object):
-    """For taking chunks of audio then changing to frequency domain and
-    filtering, identifying and outputting pika calls.
-    Long sections of audio are tough on memory usage, so pre-chopping longer
-    audio into 10 second or so chunks is recommended.
-    
-    Example usage:
-    parser = p.AudioParser(audio, freq)
-    parser.pre_process()
+    """In general this class should probably not be used directly.  See
+    pika.py for functions intended for direct use which make use of
+    this class.
+
+    This class is For taking chunks of audio then changing to frequency domain
+    and performing tasks.  The main task is filtering, identifying
+    and outputting pika calls.  Another task is providing an interface for
+    verification of previously identify pika calls.
+
+    Long sections of audio are tough on memory usage, so longer audio is
+    pre-chopped into 10 second or shorter chunks.  This can cause issues if
+    a pika call is on a bounder between chunks.  If necessary the code could
+    be adjusted to deal with that situation, but for now it will be ignored
+    in favor of getting things working otherwise.
     """
+    #*Constructor*#
     def __init__(self, recording, audio_file, debug=False,
             mpd=None, ipd_filters=None):
         """Audio should be a single channel of raw audio data.
@@ -42,7 +49,7 @@ class PikaParser(object):
         else:
             self.ipd_filters = ipd_filters
     
-    #*Intended For Public Use*#
+    #*Public Methods*#
     def identify_and_write_calls(self):
         for chunk, offset in p.segment_audio(self.full_audio, self.frequency):
             fft = self.filtered_fft(chunk)
@@ -54,13 +61,12 @@ class PikaParser(object):
     def verify_call(self, call, with_audio=True):
         plt.ion()
         fft = self.filtered_fft(self.full_audio)
-        self.spectrogram(fft)
-        if with_audio:
-            u.play_audio(call.filename);
-        u.get_verification(call)
+        self.spectrogram(fft, call.filename)
+        response = u.get_verification(call, with_audio)
         plt.close()
+        return response
     
-    #*Intended For Private Use*#
+    #*Private Methods*#
     def load_audio(self, audio_file):
         (audio, bitrate, nBits) = scikits.audiolab.wavread(audio_file)
         if audio.ndim == 2: 
