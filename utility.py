@@ -7,6 +7,8 @@ import glob
 import subprocess
 import datetime
 import os
+import re
+import mutagen.mp3
 import pika_db_models as db
 
 def set_observations(collection):
@@ -17,11 +19,11 @@ def set_observations(collection):
         file_numbers = [int(v) for v in re.split(', |\s|,', file_numbers)]
         print("The following files were selected:\n{}".format("\n".join([mp3files[f]
             for f in file_numbers])))
-        description = u.get_text("Short description of observation: ")
-        notes = u.get_text("More detailed notes about observation: ")
-        count_estimate = u.get_count_estimate()
-        latitude = u.get_latitude()
-        longitude = u.get_longitude()
+        description = get_text("Short description of observation: ")
+        notes = get_text("More detailed notes about observation: ")
+        count_estimate = get_count_estimate()
+        latitude = get_latitude()
+        longitude = get_longitude()
         observation = db.Observation(collection=collection, description=description,
                 notes=notes, count_estimate=count_estimate, 
                 latitude=latitude, longitude=longitude)
@@ -36,7 +38,7 @@ def set_recording(observation, mp3):
     start = datetime.datetime.fromtimestamp(os.path.getmtime(mp3))
     print("For the recording {}, start time found as {}".format(mp3, start))
     if not confirm("Is that the correct start time?"):
-        start = u.get_start_time()
+        start = get_start_time()
     info = mutagen.mp3.MP3(mp3).info
     recording = db.Recording(filename=mp3, observation=observation, start_time=start, 
             duration=info.length, bitrate=info.bitrate)
@@ -104,7 +106,7 @@ def get_start_date():
     return get_date("Start date")
         
 def get_end_date(start_date):
-    if confirm("Use same date as start date ({})?".format(start_date.strftime("%m/%d/%Y"))):
+    if confirm("Is the start date ({}) also the end date?".format(start_date.strftime("%m/%d/%Y"))):
         return None
     return get_date("End date")
 
@@ -154,7 +156,7 @@ def get_collection_folder():
             collection = db.Collection.selectBy(folder=folder)
             if collection.count() > 0:
                 print("Collection record for folder {} already exists (with id: {}, description: {})\n"
-                        "Here's another chance!".format(input_folder, collection[0].id, collection[0].description))
+                        "Here's another chance!".format(folder, collection[0].id, collection[0].description))
             else: #new collection, get files that may be in collection
                 mp3files = glob.glob(folder + "\\*.mp3")
                 if len(mp3files) == 0:

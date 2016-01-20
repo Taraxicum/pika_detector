@@ -138,7 +138,7 @@ def segment_audio(audio, freq, segment_length=10):
     temporary file and yields that temporary file.
     """
     offset = 0
-    step_size = segment_length*freq
+    step_size = int(segment_length*freq)
     while offset < len(audio):
         next_offset = offset + step_size
         end = min(len(audio), next_offset)

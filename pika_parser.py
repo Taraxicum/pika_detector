@@ -6,6 +6,7 @@ import scikits.audiolab
 import processing as p
 import os
 
+
 class PikaParser(object):
     """In general this class should probably not be used directly.  See
     pika.py for functions intended for direct use which make use of
@@ -23,12 +24,13 @@ class PikaParser(object):
     in favor of getting things working otherwise.
     """
     #*Constructor*#
-    def __init__(self, recording, audio_file, debug=False,
+    def __init__(self, recording, audio_file, database, debug=False,
             mpd=None, ipd_filters=None):
         """Audio should be a single channel of raw audio data.
         """
         self.recording = recording
         self.full_audio = self.load_audio(audio_file)
+        self.db = database
         self.frequency = self.recording.bitrate
         self.debug = debug
         self.fft_size = 4096
@@ -141,7 +143,7 @@ class PikaParser(object):
                     current_ridge = None
             else:
                 if s > threshold:
-                    current_ridge = i*factor
+                    current_ridge = i*self.factor
         if current_ridge is not None:
             ridges.append([current_ridge, len(scores)*self.factor])
         min_ridge_length = .1
@@ -159,14 +161,14 @@ class PikaParser(object):
         filename callN.wav where N is the call id in the database.
         """
 
-        output_path = self.recording.output_folder + "calls/"
+        output_path = self.recording.output_folder() + "calls/"
         if not os.path.exists(output_path):
             os.makedirs(output_path)
         
         for interval in intervals:
             c_offset = float(offset + interval[0])
             c_duration = float(interval[1] - interval[0])
-            c = db.Call(recording=recording, offset=c_offset,
+            c = self.db.Call(recording=self.recording, offset=c_offset,
                     duration=c_duration, filename="temp")
             c.filename = output_path + "call{}.wav".format(c.id)
             scikits.audiolab.wavwrite( np.asarray(audio[
