@@ -1,0 +1,9 @@
+{% if recording_list %}
+    <ul>
+        {% for recording in recording_list %}
+            <li>{{ recording }}</li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p> No recordings are available.</p>
+{% endif %}
