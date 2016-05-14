@@ -14,4 +14,3 @@ class CollectionAdmin(admin.ModelAdmin):
 # Register your models here.
 admin.site.register(Observer)
 admin.site.register(Collection, CollectionAdmin)
-#admin.site.register(Recording)

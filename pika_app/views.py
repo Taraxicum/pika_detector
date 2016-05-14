@@ -14,3 +14,4 @@ class RecordingsView(generic.ListView):
     
     def get_queryset(self):
         return Recording.objects.order_by("id")[:5]
+
