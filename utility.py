@@ -44,7 +44,6 @@ def get_verification(call, with_audio=True):
             play_audio(call.filename, volume_mult)
 
 
-
 def play_audio(audio, vol_mult=20, start=0, duration=60):
     subprocess.call(["ffplay", "-nodisp", "-autoexit",
         "-ss", str(start), "-t", str(duration),

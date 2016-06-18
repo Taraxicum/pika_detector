@@ -2,6 +2,7 @@ external python libraries include:
 scikits.audiolab
 numpy
 mutagen
+
 django
 
 external tools include:
@@ -20,7 +21,6 @@ A bit frustrating to get setup.  I tried a few different things and I think the 
 
   2) Install that .whl file by running:
 	pip install scikits.audiolab-0.11.0-cp27-none-win32.whl from the directory the file was in
-
 
 9/28/2015
 
