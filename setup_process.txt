@@ -1,0 +1,34 @@
+external python libraries include:
+scikits.audiolab
+numpy
+mutagen
+django
+
+external tools include:
+sqlite3
+ffmpeg
+
+Libraries/tools requiring extra install information are detailed below. I believe other libraries were successfully installed with pip, e.g. "pip install mutagen"
+
+
+scikits audiolab 7/30/2015
+A bit frustrating to get setup.  I tried a few different things and I think the following is what worked:
+(note I already have python 2.7 installed on my windows 7 system)
+
+  1) Download scikits.audiolab-0.11.0-cp27-none-win32.whl 
+	(note 32 bit version, I tried 64 bit but I guess since my python is 32bit - though my system is 64bit - the 32 was the correct choice)
+
+  2) Install that .whl file by running:
+	pip install scikits.audiolab-0.11.0-cp27-none-win32.whl from the directory the file was in
+
+
+9/28/2015
+
+3) install ffmpeg (trying to get utilities set up to process larger audio files without
+loading all into memory at once) - downloaded binary from: http://ffmpeg.zeranoe.com/builds/win64/static/ffmpeg-20150928-git-235381e-win64-static.7z
+
+usage examples at: http://howto-pages.org/ffmpeg/
+
+10/16/2015
+
+4) sqlite: download precompiled binaries from https://www.sqlite.org/download.html (both the shell and the dll file).  Extract them to a folder of your choice and add that folder to your path.

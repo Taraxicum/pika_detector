@@ -16,15 +16,15 @@ def parse_mp3(mp3file, handler):
     if info.length > 3600:
         raise Exception("File ({}) too long for code to handle - " \
                 "currently setup to only handle files of less than " \
-                "1 hour.  This file is {:.2f}".format(mp3file,
-                    info.length/3600))
+                "60 minutes.  This file is {:.2f} minutes".format(mp3file,
+                    info.length/60))
         #Limiting to 1 hour here because larger files should be split
         #up differently since even at an hour this will create around
         #600 MB of wav files.  TODO deal with larger files in a 
         #sensible manner and probably delete the wav file segments
         #after use.  For now I will leave it like this though since
         #the wav files will probably be useful for debugging purposes
-    for audio, offset in p.segment_mp3(mp3file, 1500):
+    for audio, offset in p.segment_mp3(mp3file, 600):
         print "parsing {} at offset {}".format(os.path.basename(audio), offset)
         parser = Parser(audio, handler, offset)
         parser.identify_calls()
@@ -33,6 +33,7 @@ def parse_mp3(mp3file, handler):
             has_count = True
         except AttributeError:
             pass
+        parser.close()
     if has_count:
         print "Total count: {}".format(total)
 
@@ -104,6 +105,11 @@ class Parser(object):
         
         self.interval_finder=self.interval_finder_with_negative
 
+    def close(self):
+        """Handles needed cleanup in particular sets full_audio to None
+        """
+        self.full_audio = None
+    
     def analyze_interval(self, interval, nice_plotting=False, title=None):
         """Displays spectrogram and some related data for given time interval 
         in the loaded audio.
