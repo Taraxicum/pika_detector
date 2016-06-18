@@ -4,20 +4,40 @@ import matplotlib.pyplot as plt
 import collections
 import scikits.audiolab
 import processing as p
+import utility as u
 import os
 import mutagen.mp3
 from call_handler import CallHandler
 
+def verify_call(call):
+    """
+    """
+    print "Before: call {}, verified? {}".format(call, call.verified)
+    parser = Parser(call.filename, None, call.offset, step_size_divisor=64)
+    response = parser.verify_call(call)
+    print "Response: {}".format(response)
+    if response == True:
+        call.verified = True
+        call.save()
+    elif response == False:
+        call.verified = False
+        call.save()
+    elif response == "q":
+        return False
+    print "After: call {}, verified? {}".format(call, call.verified)
+    return True
 
 def parse_mp3(mp3file, handler):
     info = mutagen.mp3.MP3(mp3file).info
     total = 0
     has_count = False
-    if info.length > 3600:
-        raise Exception("File ({}) too long for code to handle - " \
-                "currently setup to only handle files of less than " \
-                "60 minutes.  This file is {:.2f} minutes".format(mp3file,
-                    info.length/60))
+    #if info.length > 3600:
+    ##TODO I think any reasonable lengthed file can be handled now, but not certain until 
+    ##I verify through testing
+        #raise Exception("File ({}) too long for code to handle - " \
+                #"currently setup to only handle files of less than " \
+                #"60 minutes.  This file is {:.2f} minutes".format(mp3file,
+                    #info.length/60))
         #Limiting to 1 hour here because larger files should be split
         #up differently since even at an hour this will create around
         #600 MB of wav files.  TODO deal with larger files in a 
@@ -51,7 +71,7 @@ class Parser(object):
     in favor of getting things working otherwise.
     """
     #*Constructor*#
-    def __init__(self, audio_file, handler, offset=0, debug=False):
+    def __init__(self, audio_file, handler, offset=0, step_size_divisor=2, debug=False):
         """
         :audio_file should be the path to a wav file.
         :handler should be of type CallHandler
@@ -59,12 +79,13 @@ class Parser(object):
         example if it starts at 240 seconds into the original file the
         offset should be 240
         """
+        print audio_file
 
         self.offset = offset
 
         self.full_audio, self.frequency = self.load_audio(audio_file)
 
-        if not isinstance(handler, CallHandler):
+        if not isinstance(handler, CallHandler) and handler is not None:
             raise Exception("pika.Parser called with handler that is not " \
                     "an instance of CallHandler: {}".format(handler))
         else:
@@ -76,7 +97,7 @@ class Parser(object):
         
         self.fft = None
         self.fft_size = 4096
-        self.step_size = int(self.fft_size*1.0/2) #/64
+        self.step_size = int(self.fft_size*1.0/step_size_divisor)
         self.factor = self.step_size*1.0/self.frequency
         self.fft_window = [self.fft_size/32 + 150]
         self.fft_window.append(self.fft_window[0] + 275)
@@ -169,6 +190,14 @@ class Parser(object):
                             self.full_audio[int((offset + interval[0])*self.frequency):
                                 int((offset + interval[1])*self.frequency)])
 
+    def verify_call(self, call):
+        plt.ion()
+        self.filtered_fft(self.full_audio)
+        self.spectrogram("call id: {}, offset {:.0f}:{:2.1f}".format(call.id, 
+            np.floor(call.offset/60), call.offset%60))
+        response = u.get_verification(call)
+        plt.close()
+        return response
 
     #*Private Methods*#
     def load_audio(self, audio_file):
