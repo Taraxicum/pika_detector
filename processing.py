@@ -1,5 +1,5 @@
 """
-Processing functions mainly in support of by pika.py
+Processing functions mainly in support of pika.py
 """
 import numpy as np
 import scikits.audiolab
@@ -129,7 +129,7 @@ def reduce_intervals(intervals):
     return reduced_intervals
 
 def segment_audio(audio, freq, segment_length=10):
-    """iterator: iterates through audio segment_length seconds at a time
+    """returns iterator: iterates through audio segment_length seconds at a time
     yielding those segment_length seconds of the audio and the offset.
     Note the important difference between this and chunk_recording which
     performs a similar function:  chunk_recording iterates through a loaded
@@ -146,7 +146,7 @@ def segment_audio(audio, freq, segment_length=10):
         offset = next_offset
 
 def chunk_recording(recording, segment_length=300):
-    """iterator: iterates through recording segment_length seconds at a time
+    """returns iterator: iterates through recording segment_length seconds at a time
     using ffmpeg to create a temp file of the audio chunk
     yields the temp filename, offset
     Note the important difference between this and segment_audio which

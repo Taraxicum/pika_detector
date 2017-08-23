@@ -11,14 +11,14 @@ class PikaParser(object):
     pika.py for functions intended for direct use which make use of
     this class.
 
-    This class is For taking chunks of audio then changing to frequency domain
+    This class is for taking chunks of audio then changing to frequency domain
     and performing tasks.  The main task is filtering, identifying
     and outputting pika calls.  Another task is providing an interface for
     verification of previously identify pika calls.
 
     Long sections of audio are tough on memory usage, so longer audio is
     pre-chopped into 10 second or shorter chunks.  This can cause issues if
-    a pika call is on a bounder between chunks.  If necessary the code could
+    a pika call is on a boundary between chunks.  If necessary the code could
     be adjusted to deal with that situation, but for now it will be ignored
     in favor of getting things working otherwise.
     """

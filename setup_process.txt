@@ -1,3 +1,7 @@
+PySoundFile 
+    https://github.com/bastibe/PySoundFile
+    pip install soundfile
+
 external python libraries include:
 scikits.audiolab
 numpy
