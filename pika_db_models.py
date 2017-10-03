@@ -5,11 +5,22 @@ SQLObject based database interface of models for pika calls/observation/etc.
 #See sqlobject documentation for usage examples:
 http://sqlobject.org/SQLObject.html
 
+Tables:
+    Observer
+    Collection
+    Observation
+    Recording
+    Calls
+
+Each of the above tables is in a 1 to many relationship with the table below it
+(e.g. an Observer may have many collections).  For more details about the objects
+and their relationships see the docstrings for the corresponding models.
 """
 
 from sqlobject import *
 import sys
 import os
+import glob
 import numpy as np
 
 def init_db():
@@ -34,8 +45,8 @@ def init_tables(sure=False, really_sure=False):
     """
     if sure and really_sure:
         Observer.createTable(True)
-        Observation.createTable(True)
         Collection.createTable(True)
+        Observation.createTable(True)
         Recording.createTable(True)
         Call.createTable(True)
     

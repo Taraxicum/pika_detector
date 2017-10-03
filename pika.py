@@ -58,20 +58,20 @@ def preprocess_collection(collection):
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             
-            for chunk, offset in chunk_recording(recording):
+            for chunk, offset in p.chunk_recording(recording):
                 p.write_active_segments(chunk, output_path, offset)
 
 def identify_and_write_calls(collection):
     for observation in collection.observations:
         for recording in observation.recordings:
-            for f in recording.chunked_files:
-                parser = pp.PikaParser(recording, f)
+            for f in recording.chunked_files():
+                parser = pp.PikaParser(recording, f, db)
                 parser.identify_and_write_calls()
 
 def verify_calls(collection):
     for observation in collection.observations:
         for recording in observation.recordings:
             for call in recording.get_unverified_calls():
-                parser = pp.PikaParser(recording, call.filename)
+                parser = pp.PikaParser(recording, call.filename, db)
                 if not parser.verify_call(call):
                     return
