@@ -1,8 +1,7 @@
-import pika2 as p
+import pika2
 import call_handler as ch
 import sys
 import os
-import scikits.audiolab
 import numpy as np
 
 if __name__== '__main__':
@@ -40,10 +39,10 @@ def main(argv=None):
         total_count = base_query.count()
         true_positive = base_query.filter(verified=True).count()
         false_positive = base_query.filter(verified=False).count()
-        print "Total count: {}\nTrue postives: {}\nFalse positives {}".format(
-                total_count, true_positive, false_positive)
-        print "times of verified calls:"
-        print ", ".join(["{:.0f}:{:2.1f}".format(np.floor(x.offset/60), x.offset%60) for x in base_query.filter(verified=True)])
+        print("Total count: {}\nTrue postives: {}\nFalse positives {}".format(
+                total_count, true_positive, false_positive))
+        print("times of verified calls:")
+        print(", ".join(["{:.0f}:{:2.1f}".format(np.floor(x.offset/60), x.offset%60) for x in base_query.filter(verified=True)]))
     else:
         if r_id > 0:
             calls = Call.objects.filter(verified__isnull=True).filter(
@@ -51,10 +50,10 @@ def main(argv=None):
         else:
             calls = Call.objects.filter(verified__isnull=True)
 
-        print "Will be processing {} calls".format(len(calls))
+        print("Will be processing {} calls".format(len(calls)))
 
         for call in calls:
-            if not p.verify_call(call): #Means user response was to quit
+            if not pika2.verify_call(call): #Means user response was to quit
                 return
 
 if __name__ == "__main__": main()    

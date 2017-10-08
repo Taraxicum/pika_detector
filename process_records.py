@@ -1,14 +1,16 @@
-import pika2 as p
+import pika2
 import call_handler as ch
 import sys
 import os
-import scikits.audiolab
+#import scikits.audiolab
+#import wave
+import soundfile
 import numpy as np
 
 if __name__== '__main__':
     #Got this setup from:
     #https://www.stavros.io/posts/standalone-django-scripts-definitive-guide/
-    proj_path = "D:/Workspace/pika_project/"
+    proj_path = "D:/Workspace/pika/pika_project/"
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pika_project.settings")
     sys.path.append(proj_path)
     os.chdir(proj_path)
@@ -23,14 +25,14 @@ def main(argv=None):
     #TODO before processing, have interface which states number of files
     #to be processed and total length of recordings (and maybe estimate
     # of how long it will take?) and verify user wants to proceed.
-    print "Will be processing {} recordings".format(len(recordings))
+    print("Will be processing {} recordings".format(len(recordings)))
 
     for recording in recordings:
         recording.sample_frequency = 44100 #FIXME Need to automatically
         #update when creating the recording object
         handler = ToDB(recording, recording.sample_frequency)
         #handler = ch.CallCounter()
-        p.parse_mp3(recording.filename, handler)
+        pika2.parse_mp3(recording.recording_file, handler)
         recording.processed = True
         recording.save()
 
@@ -58,8 +60,14 @@ class ToDB(ch.CallHandler):
 
         call.filename = self.output_path + "call{}.wav".format(call.id)
         call.save()
-        scikits.audiolab.wavwrite(np.asarray(audio), call.filename,
-                self.frequency)
+        soundfile.write(call.filename, np.asarray(audio), self.frequency)
+        #scikits.audiolab.wavwrite(np.asarray(audio), call.filename,
+        #        self.frequency)
+        #wave_write = wave.open(call.filename, 'wb')
+        #wave_write.setframerate(self.frequency)
+        #wave_write.writeframes(np.asarray(audio))
+        #wave_write.close()
+
     
     def __enter__(self):
         return self

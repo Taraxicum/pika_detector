@@ -1,4 +1,5 @@
-import scikits.audiolab
+#import scikits.audiolab
+import wave
 import numpy as np
 import itertools
 import abc
@@ -33,7 +34,11 @@ class ToDB(CallHandler):
         duration = len(audio)*1.0/frequency
         call = self.db.Call(recording=self.recording, offset=offset,
                 duration = duration, filename="temp")
-        scikits.audiolab.wavwrite(np.asarray(audio), c.filename, self.frequency)
+        #scikits.audiolab.wavwrite(np.asarray(audio), c.filename, self.frequency)
+        wave_write = wave.open(c.filename, 'wb')
+        wave_write.setframerate(self.frequency)
+        wave_write.writeframes(audio)
+        wave_write.close()
         call.filename = self.output_path + "call{}.wav".format(call.id)
     
     def __enter__(self):
@@ -52,8 +57,8 @@ class CallCounter(CallHandler):
         return self
 
     def __exit__(self, exception_type, exception_val, trace):
-        print "Total calls identified: {}".format(self.count)
-        print "Total elapsed time: {}".format(time.time() - self.start_time)
+        print("Total calls identified: {}".format(self.count))
+        print("Total elapsed time: {}".format(time.time() - self.start_time))
 
     def handle_call(self, offset, audio):
         self.count += 1
@@ -79,6 +84,11 @@ class ToFile(CallHandler):
 
     def __exit__(self, exception_type, exception_val, trace):
         wav_data = list(itertools.chain.from_iterable(self.output))
-        scikits.audiolab.wavwrite(np.asarray(wav_data), self.out_file, 
-                self.frequency)
-        print "Total elapsed time: {}".format(time.time() - self.start_time)
+        #scikits.audiolab.wavwrite(np.asarray(wav_data), self.out_file, 
+        #        self.frequency)
+        wave_write = wave.open(self.out_file, 'wb')
+        wave_write.setframerate(self.frequency)
+        wave_write.writeframes(np.asarray(wav_data))
+        wave_write.close()
+
+        print("Total elapsed time: {}".format(time.time() - self.start_time))

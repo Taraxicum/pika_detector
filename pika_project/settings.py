@@ -54,6 +54,7 @@ MIDDLEWARE_CLASSES = [
 ROOT_URLCONF = 'pika_project.urls'
 
 MEDIA_ROOT = "d:/workspace/pika_project/collections/"
+MEDIA_URL = "/media/"
 
 TEMPLATES = [
     {
@@ -122,3 +123,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.9/howto/static-files/
 
 STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    'd:/workspace/pika_project/static/',
+    'd:/workspace/pika_project/collections/',
+        ]

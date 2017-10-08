@@ -2,7 +2,8 @@
 Processing functions mainly in support of pika.py
 """
 import numpy as np
-import scikits.audiolab
+#import scikits.audiolab
+import wave
 import time
 import os
 import glob
@@ -33,7 +34,8 @@ def segment_mp3(filename, segment_length=300, output_frequency=44100):
         try:
             if resample:
                 subprocess.check_output(["ffmpeg", "-loglevel", "0", "-channel_layout", "stereo",
-                    "-i", filename, "-ar", str(output_frequency),
+                    "-i", filename, "-ac", "1",
+                    "-ar", str(output_frequency),
                     "-ss", str(offset), "-t", str(length), outfile])
             else:
                 subprocess.check_output(["ffmpeg", "-loglevel", "0", "-channel_layout", "stereo",
@@ -64,10 +66,10 @@ def write_active_segments(filename, path, offset, frequency=44100):
     """
     intervals, fft = find_active_segments(filename)
     if len(intervals) == 0:
-        print "No active segments found in {}".format(filename)
+        print("No active segments found in {}".format(filename))
         return
     for i, interval in enumerate(intervals):
-        print "i: {}, interval: {}".format(i, interval)
+        print("i: {}, interval: {}".format(i, interval))
         outfile = path + "offset_{}.wav".format(offset + interval[0])
         pkl_outfile = path + "offset_{}.pkl".format(offset + interval[0])
         try:
@@ -76,13 +78,16 @@ def write_active_segments(filename, path, offset, frequency=44100):
                 subprocess.check_call(["ffmpeg", "-loglevel", "0", '-channel_layout', 'stereo', "-i", filename,
                     "-ar", str(frequency), "-ss", str(interval[0]), "-t", str(interval[1]-interval[0]), outfile])
         except Exception as inst:
-            print "There was an exception writing temp file {} in write_active_segments:".format(outfile)
-            print type(inst)
-            print inst.args
-            print inst
+            print("There was an exception writing temp file {} in write_active_segments:".format(outfile))
+            print(type(inst))
+            print(inst.args)
+            print(inst)
 
 def load_wav(filename):
-    (snd, freq, nbits) = scikits.audiolab.wavread(filename)
+    #(snd, freq, nbits) = scikits.audiolab.wavread(filename)
+    wave_read = wave.open(filename, 'rb')
+    freq = wave_read.getframerate()
+    import pdb; pdb.set_trace()
     if snd.ndim == 2:
         snd = [v[0] for v in snd]
     return snd, freq
@@ -126,8 +131,8 @@ def find_active_segments(filename, verbose=0, fft=None, audio=None, freq=None):
     
     intervals = get_intervals(above_threshold, factor)
     if verbose > 0: 
-        print "Total length kept {}".format(total_segment_length(intervals))
-        print "time taken {}".format(time.time() - start_time)
+        print("Total length kept {}".format(total_segment_length(intervals)))
+        print("time taken {}".format(time.time() - start_time))
     return intervals, fft
 
 def total_segment_length(intervals):
@@ -200,9 +205,11 @@ def segment_audio(audio, freq, segment_length=10):
     """
     offset = 0
     step_size = int(segment_length*freq) #in samples
-    while offset < len(audio):
+    total_frames = len(audio)
+    while offset < total_frames: #len(audio):
         next_offset = offset + step_size
-        end = min(len(audio), next_offset)
+        end = min(total_frames, next_offset)
+        #yield audio.readframes(step_size), offset*1.0/freq
         yield audio[offset:end], offset*1.0/freq
         offset = next_offset
 

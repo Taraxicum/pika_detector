@@ -1,21 +1,31 @@
 import find_peaks as peaks
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import collections
-import scikits.audiolab
-import processing as p
+#import scikits.audiolab
+#import wave
+import soundfile
+import processing
 import utility as u
 import os
 import mutagen.mp3
 from call_handler import CallHandler
+            
+from django.http import HttpResponse
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 def verify_call(call):
     """
     """
-    print "Before: call {}, verified? {}".format(call, call.verified)
-    parser = Parser(call.filename, None, call.offset, step_size_divisor=64)
+    print("Before: call {}, verified? {}".format(call, call.verified))
+    try:
+        parser = Parser(call.filename, None, call.offset, step_size_divisor=64)
+    except:
+        return True
     response = parser.verify_call(call)
-    print "Response: {}".format(response)
+    print("Response: {}".format(response))
     if response == True:
         call.verified = True
         call.save()
@@ -24,7 +34,7 @@ def verify_call(call):
         call.save()
     elif response == "q":
         return False
-    print "After: call {}, verified? {}".format(call, call.verified)
+    print("After: call {}, verified? {}".format(call, call.verified))
     return True
 
 def parse_mp3(mp3file, handler):
@@ -44,18 +54,20 @@ def parse_mp3(mp3file, handler):
         #sensible manner and probably delete the wav file segments
         #after use.  For now I will leave it like this though since
         #the wav files will probably be useful for debugging purposes
-    for audio, offset in p.segment_mp3(mp3file, 600):
-        print "parsing {} at offset {}".format(os.path.basename(audio), offset)
-        parser = Parser(audio, handler, offset)
-        parser.identify_calls()
+    for audio, offset in processing.segment_mp3(mp3file.path, 600):
+        print("parsing {} at offset {}".format(os.path.basename(audio), offset))
         try:
-            total += handler.count
-            has_count = True
-        except AttributeError:
-            pass
-        parser.close()
+            parser = Parser(audio, handler, offset)
+            parser.identify_calls()
+            try:
+                total += handler.count
+                has_count = True
+            except AttributeError:
+                pass
+        finally:
+            parser.close()
     if has_count:
-        print "Total count: {}".format(total)
+        print("Total count: {}".format(total))
 
 
 class Parser(object):
@@ -79,7 +91,7 @@ class Parser(object):
         example if it starts at 240 seconds into the original file the
         offset should be 240
         """
-        print audio_file
+        print(audio_file)
 
         self.offset = offset
 
@@ -99,7 +111,7 @@ class Parser(object):
         self.fft_size = 4096
         self.step_size = int(self.fft_size*1.0/step_size_divisor)
         self.factor = self.step_size*1.0/self.frequency
-        self.fft_window = [self.fft_size/32 + 150]
+        self.fft_window = [self.fft_size//32 + 150]
         self.fft_window.append(self.fft_window[0] + 275)
         
         #minimum peak distance for calculating harmonic frequencies
@@ -129,6 +141,7 @@ class Parser(object):
     def close(self):
         """Handles needed cleanup in particular sets full_audio to None
         """
+        #self.full_audio.close()
         self.full_audio = None
     
     def analyze_interval(self, interval, nice_plotting=False, title=None):
@@ -147,8 +160,8 @@ class Parser(object):
         audio = self.get_audio_interval(interval)
         self.filtered_fft(audio)
         frame_scores = self.score_fft(with_negative=True)
-        print "Passing intervals {}".format(
-                self.find_passing_intervals(frame_scores))
+        print("Passing intervals {}".format(
+                self.find_passing_intervals(frame_scores)))
         self.spectrogram(title=title)
         self.debug = False
     
@@ -180,9 +193,9 @@ class Parser(object):
         #if interval_finder is None:
         #self.basic_interval_finder
         if self.debug:
-            print "ipd filters: {}".format(self.ipd_filters)
+            print("ipd filters: {}".format(self.ipd_filters))
         with self.handler as handler:
-            for chunk, offset in p.segment_audio(self.full_audio, self.frequency):
+            for chunk, offset in processing.segment_audio(self.full_audio, self.frequency):
                 self.filtered_fft(chunk)
                 good_intervals = self.interval_finder()
                 for interval in good_intervals:
@@ -190,11 +203,16 @@ class Parser(object):
                             self.full_audio[int((offset + interval[0])*self.frequency):
                                 int((offset + interval[1])*self.frequency)])
 
+    def get_spectrogram(self, call, to_http=False):
+        self.filtered_fft(self.full_audio)
+        response = self.spectrogram("call id: {}, offset {}".format(
+            call.id, call.offset_display, to_http=to_http))
+        return response
+
     def verify_call(self, call):
         plt.ion()
         self.filtered_fft(self.full_audio)
-        self.spectrogram("call id: {}, offset {:.0f}:{:2.1f}".format(call.id, 
-            np.floor(call.offset/60), call.offset%60))
+        self.spectrogram("call id: {}, offset {}".format(call.id, call.offset_display))
         response = u.get_verification(call)
         plt.close()
         return response
@@ -202,31 +220,44 @@ class Parser(object):
     #*Private Methods*#
     def load_audio(self, audio_file):
         if audio_file[-3:] == "mp3":
-            raise Exception("pika.Parser only works directly on wav files" \
+            raise NotImplementedError("pika.Parser only works directly on wav files" \
                     "to process mp3, use pika.parse_mp3 helper function." )
         elif audio_file[-3:] == "wav":
-            (audio, frequency, nBits) = scikits.audiolab.wavread(audio_file)
-            if audio.ndim == 2: 
+            #(audio, frequency, nBits) = scikits.audiolab.wavread(audio_file)
+            #wave_read = wave.open(audio_file, 'rb')
+            try:
+                data, frequency = soundfile.read(audio_file)
+            except RuntimeError:
+                print("couldn't find {} - proceeding to next".format(audio_file))
+                raise
+            #import pdb; pdb.set_trace()
+            
+            #frequency = wave_read.getframerate()
+            #if wave_read.getnchannels() == 2: 
+            if len(data.shape) == 2:
                 #get left channel if a stereo file not needed for mono
-                audio = [v[0] for v in audio]
-        return audio, frequency
+                data = [v[0] for v in data]
+                #raise NotImplementedError("Only works for mono at the moment")
+        #return wave_read, frequency
+        return data, frequency
     
     def filtered_fft(self, audio=None):
         if audio is None:
             audio = self.full_audio
-        first_dim=np.ceil(1.0*(len(audio))/(self.step_size))
-        second_dim = self.fft_window[1] - self.fft_window[0]
+        first_dim=int(np.ceil(1.0*(len(audio))/(self.step_size)))
+        second_dim = int(self.fft_window[1] - self.fft_window[0])
         fft = np.zeros((first_dim, second_dim))
-        for i in xrange(0, len(audio), self.step_size):
-            f = np.absolute(np.fft.fft(audio[i:i+self.fft_size], self.fft_size))
+        for i in range(0, len(audio), self.step_size):
+            fft_temp = np.fft.fft(audio[i:i+self.fft_size], self.fft_size)
+            f = np.absolute(fft_temp)
             f = f[self.fft_window[0]:self.fft_window[1]] 
-            fft[i/self.step_size] = f 
+            fft[i//self.step_size] = f 
         
         #normalize
         max_val = np.amax(fft)
         fft = fft/np.max([max_val, .1])
         if self.debug:
-            print "segment max value: {}".format(max_val)
+            print("segment max value: {}".format(max_val))
         
         #noise-reduction
         avg_fft = np.sum(fft, axis=0)/len(fft)
@@ -310,14 +341,14 @@ class Parser(object):
                 if self.debug:
                     if len(locs) != 0:
                         ipd = np.convolve(locs, [1, -1])
-                        print "t: {:.2f}, {:.1f} | {} | ipd {}, count {}, score {}".format(i*self.factor, running_score, amount, ipd, count, score)
+                        print("t: {:.2f}, {:.1f} | {} | ipd {}, count {}, score {}".format(i*self.factor, running_score, amount, ipd, count, score))
                         r_max = np.max(frame)
-                        print "t: {:.2f}, 85%: {:.3f}, mean: {:.3f}, sd: {:.3f}".format(
+                        print("t: {:.2f}, 85%: {:.3f}, mean: {:.3f}, sd: {:.3f}".format(
                                 i*self.factor, np.percentile(frame, 85)/r_max,
-                                np.mean(frame)/r_max, np.std(frame)/r_max)
-                        print "t: {:.2f}, f: {}, ipd sd: {:.1f}, mean: {:.1f}, frame max: {:.3f}".format(
+                                np.mean(frame)/r_max, np.std(frame)/r_max))
+                        print("t: {:.2f}, f: {}, ipd sd: {:.1f}, mean: {:.1f}, frame max: {:.3f}".format(
                                 i*self.factor, i,
-                                np.std(ipd[1:-1]), np.mean(ipd[1:-1]), frame_max)
+                                np.std(ipd[1:-1]), np.mean(ipd[1:-1]), frame_max))
 
             scores.append(score)
         return scores
@@ -356,12 +387,13 @@ class Parser(object):
         ridges[:] = [r for r in ridges if r[1] - r[0] > min_ridge_length]
         return ridges
 
-    def spectrogram(self, title=None):
+    def spectrogram(self, title=None, to_http=False):
         #plt.figure(figsize=(6, 3))
+        figure = plt.figure()
         plt.imshow(np.asarray([f for f in self.fft]).T,
                 origin='lower', cmap="Greys")
         plt.xticks(plt.xticks()[0], ["{0:.2f}".format(t*self.factor) 
-            for t in plt.xticks()[0]])
+                                    for t in plt.xticks()[0]])
         plt.xlim(0, len(self.fft))
         
         plt.yticks(plt.yticks()[0], ["{}".format(float('%.2g' % (self.fft_bin_to_frequency(t)/1000.0)))
@@ -375,5 +407,12 @@ class Parser(object):
         plt.xlabel("Time in Seconds")
         plt.ylabel("Frequency in kHz")
         #plt.tight_layout()
-        plt.show(block=False)
+        if to_http:
+            response = HttpResponse(content_type='image/png')
+            canvas = FigureCanvasAgg(figure)
+            canvas.print_png(response)
+            plt.close()
+            return response
+        else:
+            plt.show(block=False)
     

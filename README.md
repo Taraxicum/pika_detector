@@ -19,7 +19,7 @@ For a new install (some steps may be skipped if previously completed, e.g. creat
 - In a browser go to http://127.0.0.1:8000/admin/pika_app/
 - Create an observer by clicking the add link next to Observers, then save when finished
 - Create a collection by clicking the add link next to Collections
-- - Fill out the form for the collections details including folder which must be a subfolder of the collections folder in pika_project (collections folder may need to be created before use).  This folder should contain the recordings to be analyzed.
+- - Fill out the form for the collections details including folder which must be a subfolder of the collections folder in pika_project (collections folder may need to be created before use, also may need to update MEDIA_ROOT in piks_project/settings.py).  This folder should contain the recordings to be analyzed.
 - - Scroll down to the bottom of the collection creation form and you can create a recording (or multiple recordings) record for the collection.  This interface will need to be updated, currently the filename drop down just gives you the option of any mp3 in the collections folder tree (rather than narrowing to the folder given in the collection form above).
 - - Save when finished editing
 
