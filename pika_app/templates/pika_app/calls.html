@@ -1,0 +1,33 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+{% if summary %}
+<div>
+    <ul>
+        <li>Total Calls: {{ summary.total }}</li>
+        <li>Confirmed: {{ summary.confirmed }}</li>
+        <li>False Positives: {{ summary.wrong }}</li>
+        <li>Unclassified: {{ summary.unclassified }}</li>
+    </ul>
+</div>
+{% endif %}
+{% if call_list %}
+    <ul>
+        {% for call in call_list %}
+            <li>
+            <audio controls>
+                <source src="/static/{{ call.local_filename }}" type="audio/wav">
+                Your browser does not support the audio element.
+            </audio>
+            {% if call.verified is None %}
+            <span class='fa fa-question-circle' style='color:orange'></span>
+            {% elif call.verified %}
+            <span class='fa fa-check-circle' style='color:green'></span>
+            {% else %}
+            <span class='fa fa-minus-circle' style='color:red'></span>
+            {% endif %}
+            <a href='/pika_app/verify_call/{{ call.id }}'>call {{call.id}} {{call.offset_display}}</a>
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p> No calls are available.</p>
+{% endif %}
