@@ -241,7 +241,7 @@ class Parser(object):
         #return wave_read, frequency
         return data, frequency
     
-    def filtered_fft(self, audio=None):
+    def filtered_fft(self, audio=None, filter_on=True):
         if audio is None:
             audio = self.full_audio
         first_dim=int(np.ceil(1.0*(len(audio))/(self.step_size)))
@@ -253,23 +253,26 @@ class Parser(object):
             f = f[self.fft_window[0]:self.fft_window[1]] 
             fft[i//self.step_size] = f 
         
-        #normalize
-        max_val = np.amax(fft)
-        fft = fft/np.max([max_val, .1])
-        if self.debug:
-            print("segment max value: {}".format(max_val))
-        
-        #noise-reduction
-        avg_fft = np.sum(fft, axis=0)/len(fft)
-        for i, frame in enumerate(fft):
-            fft[i] = [max(frame[j]-avg_fft[j], 0) for j, v in enumerate(frame)] 
-        
-        #filter out quiet parts
-        f_mean = np.mean(fft)
-        threshold = .05
-        #self.fft = [[1 if x > .08 else x for x in f] for f in fft] 
-        #self.fft = [[10*x if x <= .1 and x > .01 else x for x in f] for f in fft] 
-        self.fft = [[x if x > f_mean + threshold else 0.0 for x in f] for f in fft] 
+        if filter_on:
+            #normalize
+            max_val = np.amax(fft)
+            fft = fft/np.max([max_val, .1])
+            if self.debug:
+                print("segment max value: {}".format(max_val))
+            
+            #noise-reduction
+            avg_fft = np.sum(fft, axis=0)/len(fft)
+            for i, frame in enumerate(fft):
+                fft[i] = [max(frame[j]-avg_fft[j], 0) for j, v in enumerate(frame)] 
+            
+            #filter out quiet parts
+            f_mean = np.mean(fft)
+            threshold = .05
+            #self.fft = [[1 if x > .08 else x for x in f] for f in fft] 
+            #self.fft = [[10*x if x <= .1 and x > .01 else x for x in f] for f in fft] 
+            self.fft = [[x if x > f_mean + threshold else 0.0 for x in f] for f in fft] 
+        else:
+            self.fft = fft
     
     def fft_bin_to_frequency(self, bin_number):
         """self.step_size, self.frequency, and self.fft_window all need to be 
