@@ -1,4 +1,6 @@
-import pika2
+from typing import Iterable
+
+from pika2 import parse_audio
 import call_handler as ch
 import sys
 import os
@@ -28,16 +30,16 @@ def main(argv=None):
     print("Will be processing {} recordings".format(len(recordings)))
 
     for recording in recordings:
-        recording.sample_frequency = 44100 #FIXME Need to automatically
-        #update when creating the recording object
+        recording.sample_frequency = 44100 #FIXME Need to automatically update when creating the recording object
         handler = ToDB(recording, recording.sample_frequency)
         #handler = ch.CallCounter()
-        pika2.parse_mp3(recording.recording_file, handler)
+        parse_audio(recording.recording_file, handler)
         recording.processed = True
         recording.save()
 
 class ToDB(ch.CallHandler):
     def __init__(self, recording, frequency):
+        # type: (Recording, float) -> None
         self.recording = recording
         self.frequency = frequency
         
@@ -52,7 +54,7 @@ class ToDB(ch.CallHandler):
             
     
     def handle_call(self, offset, audio):
-        #print "{}, {}".format(len(audio), self.frequency)
+        # type: (float, Iterable) -> None
         duration = len(audio)*1.0/self.frequency
         call = Call(recording=self.recording, offset=offset,
                 duration = duration, filename="temp")
@@ -61,18 +63,13 @@ class ToDB(ch.CallHandler):
         call.filename = self.output_path + "call{}.wav".format(call.id)
         call.save()
         soundfile.write(call.filename, np.asarray(audio), self.frequency)
-        #scikits.audiolab.wavwrite(np.asarray(audio), call.filename,
-        #        self.frequency)
-        #wave_write = wave.open(call.filename, 'wb')
-        #wave_write.setframerate(self.frequency)
-        #wave_write.writeframes(np.asarray(audio))
-        #wave_write.close()
 
-    
     def __enter__(self):
+        # type: () -> ch.CallHandler
         return self
 
     def __exit__(self, exception_type, exception_val, trace):
+        # type: (...) -> None
         return
 
 

@@ -1,6 +1,8 @@
 """
 Processing functions mainly in support of pika.py
 """
+from typing import Tuple, Iterator
+
 import numpy as np
 #import scikits.audiolab
 import wave
@@ -12,6 +14,7 @@ import mutagen.mp3
 
 
 def segment_mp3(filename, segment_length=300, output_frequency=44100):
+    # type: (str, int, int) -> Iterator[Tuple[str, int]]
     """
     Parses mp3 into .wav files and yields audio and offset of the segments to be iterated over 
     :filename: path of mp3 to returns segments of
@@ -48,6 +51,7 @@ def segment_mp3(filename, segment_length=300, output_frequency=44100):
 
 
 def write_active_segments(filename, path, offset, frequency=44100):
+    # type: (str, str, int, int) -> None
     """
     Processes audio file to find parts of the file that are active - i.e. the parts that aren't 
     just background noise.  Outputs files to path folder with file named offset_{}.wav where the
@@ -84,6 +88,7 @@ def write_active_segments(filename, path, offset, frequency=44100):
             print(inst)
 
 def load_wav(filename):
+    # type:
     #(snd, freq, nbits) = scikits.audiolab.wavread(filename)
     wave_read = wave.open(filename, 'rb')
     freq = wave_read.getframerate()

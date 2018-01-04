@@ -1,3 +1,5 @@
+from django.db.models import FileField
+
 import find_peaks as peaks
 import numpy as np
 import matplotlib
@@ -37,7 +39,30 @@ def verify_call(call):
     print("After: call {}, verified? {}".format(call, call.verified))
     return True
 
+def parse_audio(audio_file, handler):
+    # type: (FileField, CallHandler) -> None
+    if audio_file[-3:] == "mp3":
+        parse_mp3(audio_file, handler)
+    elif audio_file[-3:] == "wav":
+        parse_wav(audio_file, handler)
+        #(audio, frequency, nBits) = scikits.audiolab.wavread(audio_file)
+        #wave_read = wave.open(audio_file, 'rb')
+        try:
+            data, frequency = soundfile.read(audio_file)
+        except RuntimeError:
+            print("couldn't find {}".format(audio_file))
+            raise
+    else:
+        raise NotImplementedError("Can only handle .mp3 and .wav files currently, got {}".format(audio_file))
+
+
+def parse_wav(wav_file_name, handler):
+    # type: (FileField, CallHandler) -> None
+    raise NotImplementedError("No wav handler implemented yet :(")
+
+
 def parse_mp3(mp3file, handler):
+    # type: (FileField, CallHandler) -> None
     info = mutagen.mp3.MP3(mp3file).info
     total = 0
     has_count = False

@@ -58,7 +58,7 @@ class Recording(models.Model):
     #filename = models.FilePathField(path=settings.MEDIA_ROOT,
     #        match="\.mp3$", recursive=True, default=None, blank=True)
     ## EA 8/1/16 replaced with recording_file
-    recording_file = models.FileField(default="", upload_to = recording_path)
+    recording_file = models.FileField(default="", upload_to=recording_path)
     duration = models.FloatField(default=None, null=True, blank=True)
     sample_frequency = models.FloatField(default=None, null=True, blank=True)
     device = models.CharField(max_length=100, default=None,
