@@ -1,4 +1,5 @@
 from django.db.models import FileField
+from django.db.models.fields.files import FieldFile
 
 import find_peaks as peaks
 import numpy as np
@@ -40,25 +41,38 @@ def verify_call(call):
     return True
 
 def parse_audio(audio_file, handler):
-    # type: (FileField, CallHandler) -> None
-    if audio_file[-3:] == "mp3":
-        parse_mp3(audio_file, handler)
-    elif audio_file[-3:] == "wav":
-        parse_wav(audio_file, handler)
-        #(audio, frequency, nBits) = scikits.audiolab.wavread(audio_file)
-        #wave_read = wave.open(audio_file, 'rb')
-        try:
-            data, frequency = soundfile.read(audio_file)
-        except RuntimeError:
-            print("couldn't find {}".format(audio_file))
-            raise
+    # type: (FieldFile, CallHandler) -> None
+    audio_path = audio_file.name
+    if audio_path[-3:] == "mp3":
+        parse_mp3(audio_path, handler)
+    elif audio_path[-3:] == "wav":
+        parse_wav(audio_path, handler)
     else:
         raise NotImplementedError("Can only handle .mp3 and .wav files currently, got {}".format(audio_file))
 
 
 def parse_wav(wav_file_name, handler):
     # type: (FileField, CallHandler) -> None
-    raise NotImplementedError("No wav handler implemented yet :(")
+    total = 0
+    has_count = False
+    parser = None
+
+    try:
+        parser = Parser(wav_file_name, handler, 0)
+        parser.identify_calls()
+        try:
+            total += handler.count
+            has_count = True
+        except AttributeError:
+            pass
+    except RuntimeError as e:
+        print("Trouble loading file {}\nGot exception {}".format(wav_file_name, e))
+    finally:
+        if parser is not None:
+            parser.close()
+
+    if has_count:
+        print("Total count: {}".format(total))
 
 
 def parse_mp3(mp3file, handler):
@@ -120,7 +134,8 @@ class Parser(object):
 
         self.offset = offset
 
-        self.full_audio, self.frequency = self.load_audio(audio_file)
+        self.soundfile = soundfile.SoundFile(audio_file)
+        self.frequency = self.soundfile.samplerate
 
         if not isinstance(handler, CallHandler) and handler is not None:
             raise Exception("pika.Parser called with handler that is not " \
@@ -128,19 +143,24 @@ class Parser(object):
         else:
             self.handler = handler
         if int(self.frequency) != 44100:
-            raise Exception("pika.Parser: loaded file ({}) with frequency {}." \
-                    "  Frequency should be 44100.".format(audio_file, frequency))
+            print("pika.Parser: loaded file ({}) with frequency {}. Parser was tuned with 44100 "\
+                  "frequency so this may not be optimal.".format(audio_file, self.frequency))
+            #raise Exception("pika.Parser: loaded file ({}) with frequency {}." \
+            #        "  Frequency should be 44100.".format(audio_file, frequency))
         self.debug = debug
         
+        # factor off from originally tuned for frequency of 44100
+        self.sample_rate_factor = self.frequency/44100
+
         self.fft = None
-        self.fft_size = 4096
+        self.fft_size = int(4096*self.sample_rate_factor)
         self.step_size = int(self.fft_size*1.0/step_size_divisor)
         self.factor = self.step_size*1.0/self.frequency
         self.fft_window = [self.fft_size//32 + 150]
         self.fft_window.append(self.fft_window[0] + 275)
         
         #minimum peak distance for calculating harmonic frequencies
-        self.mpd = 40 
+        self.mpd = int(40*self.sample_rate_factor)
         
         #each ipd must fall within one of the ipd_filter ranges to be 
         #considered a successful candidate for a pika call
@@ -158,8 +178,9 @@ class Parser(object):
         #self.base_peak_filter = [15, 60]
         
         #joint tuning
-        self.ipd_filters = [[45, 93], [110, 165]] 
-        self.base_peak_filter = [15, 60]
+        self.ipd_filters = [[int(45*self.sample_rate_factor), int(93*self.sample_rate_factor)],
+                            [int(110*self.sample_rate_factor), int(165*self.sample_rate_factor)]]
+        self.base_peak_filter = [int(15*self.sample_rate_factor), int(60*self.sample_rate_factor)]
         
         self.interval_finder=self.interval_finder_with_negative
 
@@ -168,6 +189,7 @@ class Parser(object):
         """
         #self.full_audio.close()
         self.full_audio = None
+        self.soundfile.close()
     
     def analyze_interval(self, interval, nice_plotting=False, title=None):
         """Displays spectrogram and some related data for given time interval 
@@ -220,13 +242,16 @@ class Parser(object):
         if self.debug:
             print("ipd filters: {}".format(self.ipd_filters))
         with self.handler as handler:
-            for chunk, offset in processing.segment_audio(self.full_audio, self.frequency):
+            block_size = self.frequency*10
+            for i, chunk in enumerate(self.soundfile.blocks(blocksize=block_size)):
+                chunk = [c[0] for c in chunk]
+                offset = i*block_size
                 self.filtered_fft(chunk)
                 good_intervals = self.interval_finder()
                 for interval in good_intervals:
-                    handler.handle_call(self.offset + offset + interval[0],
-                            self.full_audio[int((offset + interval[0])*self.frequency):
-                                int((offset + interval[1])*self.frequency)])
+                    interval_start = int((offset + interval[0])*self.frequency)
+                    interval_end = int((offset + interval[1])*self.frequency)
+                    handler.handle_call(self.offset + offset + interval[0], chunk[interval_start:interval_end])
 
     def get_spectrogram(self, call, to_http=False):
         self.filtered_fft(self.full_audio)
