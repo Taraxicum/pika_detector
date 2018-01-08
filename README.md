@@ -36,6 +36,12 @@ This may take awhile to run, particularly on very large files.  On my system it 
 #### Verifying identified calls
 In the same way as with process_records.py, verify_calls.py may need to be updated to match your system before this will work.
 
+##### Through the browser
+- Start up a server for django (if not already running) by running the following in the pika_project directory: python manage.py runserver
+- In a browser go to http://127.0.0.1:8000/pika_app/calls/ or http://127.0.0.1:8000/pika_app/recording/{recording_id}/calls/
+- This should give you a list of calls that have been identified.  You can play their audio or click on one of of the individual calls to see the spectrogram as well and be able to verify whether or not it is actually a call.
+
+##### Through the console
 Then from the pika_project folder in the console run:
 
     python verify_calls.py
