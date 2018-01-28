@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from django.db.models import FileField
 from django.db.models.fields.files import FieldFile
 
@@ -185,15 +187,12 @@ class Parser(object):
         self.interval_finder=self.interval_finder_with_negative
 
     def close(self):
-        """Handles needed cleanup in particular sets full_audio to None
+        """Handles needed cleanup in particular closes soundfile
         """
-        #self.full_audio.close()
-        self.full_audio = None
         self.soundfile.close()
     
     def analyze_interval(self, interval, nice_plotting=False, title=None):
-        """Displays spectrogram and some related data for given time interval 
-        in the loaded audio.
+        """Displays spectrogram and some related data for given time interval in the loaded audio.
         :interval list of form [start, end] in seconds
         """
         self.debug = True
@@ -213,8 +212,9 @@ class Parser(object):
         self.debug = False
     
     def get_audio_interval(self, interval):
-        return self.full_audio[int(interval[0]*self.frequency):
-                int(interval[1]*self.frequency)]
+        self.soundfile.seek(frames=int(interval[0]*self.frequency))
+        length = int((interval[1] - interval[0])*self.frequency)
+        return self.to_mono(self.soundfile.read(frames=length))
 
     def basic_interval_finder(self):
         """Returns set of passing intervals (in seconds) when fft is run through
@@ -242,26 +242,32 @@ class Parser(object):
         if self.debug:
             print("ipd filters: {}".format(self.ipd_filters))
         with self.handler as handler:
-            block_size = self.frequency*10
+            seconds_per_block = 10
+            block_size = self.frequency*seconds_per_block
             for i, chunk in enumerate(self.soundfile.blocks(blocksize=block_size)):
-                chunk = [c[0] for c in chunk]
-                offset = i*block_size
+                chunk = self.to_mono(chunk)
+                offset = i*seconds_per_block
                 self.filtered_fft(chunk)
                 good_intervals = self.interval_finder()
                 for interval in good_intervals:
-                    interval_start = int((offset + interval[0])*self.frequency)
-                    interval_end = int((offset + interval[1])*self.frequency)
+                    interval_start = int(interval[0]*self.frequency)
+                    interval_end = int(interval[1]*self.frequency)
                     handler.handle_call(self.offset + offset + interval[0], chunk[interval_start:interval_end])
 
-    def get_spectrogram(self, call, to_http=False):
-        self.filtered_fft(self.full_audio)
+    def to_mono(self, audio):
+
+        # type: (Iterable) -> Iterable
+        return [f[0] for f in audio]
+
+    def get_spectrogram(self, call, to_http=True):
+        self.filtered_fft()
         response = self.spectrogram("call id: {}, offset {}".format(
-            call.id, call.offset_display, to_http=to_http))
+            call.id, call.offset_display), to_http=to_http)
         return response
 
     def verify_call(self, call):
         plt.ion()
-        self.filtered_fft(self.full_audio)
+        self.filtered_fft()
         self.spectrogram("call id: {}, offset {}".format(call.id, call.offset_display))
         response = u.get_verification(call)
         plt.close()
@@ -293,7 +299,8 @@ class Parser(object):
     
     def filtered_fft(self, audio=None, filter_on=True):
         if audio is None:
-            audio = self.full_audio
+            self.soundfile.seek(0)
+            audio = self.soundfile.read()
         first_dim=int(np.ceil(1.0*(len(audio))/(self.step_size)))
         second_dim = int(self.fft_window[1] - self.fft_window[0])
         fft = np.zeros((first_dim, second_dim))

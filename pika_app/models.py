@@ -101,7 +101,7 @@ class Call(models.Model):
     @property
     def spectrogram(self):
         parser = pika2.Parser(self.filename, None, self.offset, step_size_divisor=64)
-        return parser.get_spectrogram(self, to_http=True)
+        return parser.get_spectrogram(self)
     
     @property
     def offset_display(self):

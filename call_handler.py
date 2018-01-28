@@ -1,5 +1,7 @@
 #import scikits.audiolab
 import wave
+from typing import Any
+
 import numpy as np
 import itertools
 import abc
@@ -23,29 +25,30 @@ class CallHandler(object):
         return
 
 
-class ToDB(CallHandler):
-    def __init__(self, recording, db, frequency):
-        self.recording = recording
-        self.db = db
-        self.frequency = frequency
-        self.output_path = self.recording.output_folder() + "calls/"
+#class ToDB(CallHandler):
+#    def __init__(self, recording, db, frequency):
+#        self.recording = recording
+#        self.db = db
+#        self.frequency = frequency
+#        self.output_path = self.recording.output_folder() + "calls/"
     
-    def handle_call(self, offset, audio):
-        duration = len(audio)*1.0/frequency
-        call = self.db.Call(recording=self.recording, offset=offset,
-                duration = duration, filename="temp")
-        #scikits.audiolab.wavwrite(np.asarray(audio), c.filename, self.frequency)
-        wave_write = wave.open(c.filename, 'wb')
-        wave_write.setframerate(self.frequency)
-        wave_write.writeframes(audio)
-        wave_write.close()
-        call.filename = self.output_path + "call{}.wav".format(call.id)
+#    def handle_call(self, offset, audio):
+#        # type: (float, Any) -> None
+#        duration = len(audio)*1.0/self.frequency
+#        call = self.db.Call(recording=self.recording, offset=offset,
+#                duration = duration, filename="temp")
+#        #scikits.audiolab.wavwrite(np.asarray(audio), c.filename, self.frequency)
+#        wave_write = wave.open(call.filename, 'wb')
+#        wave_write.setframerate(self.frequency)
+#        wave_write.writeframes(audio)
+#        wave_write.close()
+#        call.filename = self.output_path + "call{}.wav".format(call.id)
     
-    def __enter__(self):
-        return
+#    def __enter__(self):
+#        return
 
-    def __exit__(self, exception_type, exception_val, trace):
-        return
+#    def __exit__(self, exception_type, exception_val, trace):
+#        return
 
 class CallCounter(CallHandler):
     def __init__(self):

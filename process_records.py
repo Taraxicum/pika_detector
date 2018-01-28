@@ -1,4 +1,8 @@
-from typing import Iterable
+from typing import Iterable, Sized
+
+import errno
+
+from numpy.core.multiarray import ndarray
 
 from pika2 import parse_audio
 import call_handler as ch
@@ -39,7 +43,7 @@ def main(argv=None):
 
 class ToDB(ch.CallHandler):
     def __init__(self, recording, frequency):
-        # type: (Recording, float) -> None
+        # type: (Recording, int) -> None
         self.recording = recording
         self.frequency = frequency
         
@@ -54,10 +58,11 @@ class ToDB(ch.CallHandler):
             
     
     def handle_call(self, offset, audio):
-        # type: (float, Iterable) -> None
+        # type: (float, ndarray) -> None
         duration = len(audio)*1.0/self.frequency
+        #import pdb; pdb.set_trace()
         call = Call(recording=self.recording, offset=offset,
-                duration = duration, filename="temp")
+                    duration=duration, filename="temp")
         call.save()
 
         call.filename = self.output_path + "call{}.wav".format(call.id)

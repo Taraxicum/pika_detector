@@ -16,6 +16,10 @@
     </audio>
 </div>
 <div>
+    Call offset: {{call.offset}} <br />
+    Duration: {{call.duration}}
+</div>
+<div>
     <a href='/pika_app/verification_response/{{call.id}}/y' class='btn btn-default'>Yes</a>
     <a href='/pika_app/verification_response/{{call.id}}/n' class='btn btn-default'>No</a>
 {% if next_call %}
