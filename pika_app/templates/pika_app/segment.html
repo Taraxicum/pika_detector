@@ -1,0 +1,37 @@
+<link rel="stylesheet" href="/static/bootstrap-3.3.7/css/bootstrap.min.css">
+
+<div style='height:30px'>
+</div>
+{% if rec %}
+<div style='height:100px'>
+    <h2>{{rec}}</h2>
+    <!--img src='/pika_app/call/{{ call.id }}' -->
+</div>
+<!--div>
+    <audio autoplay controls id='myaudio'>
+        <source src="/static/{{ call.local_filename }}" type="audio/wav">
+        Your browser does not support the audio element.
+    </audio>
+</div-->
+{% endif %}
+
+<!--script>
+    function amplifyMedia(mediaElem, multiplier) {
+      var context = new (window.AudioContext || window.webkitAudioContext),
+          result = {
+            context: context,
+            source: context.createMediaElementSource(mediaElem),
+            gain: context.createGain(),
+            media: mediaElem,
+            amplify: function(multiplier) { result.gain.gain.value = multiplier; },
+            getAmpLevel: function() { return result.gain.gain.value; }
+          };
+      result.source.connect(result.gain);
+      result.gain.connect(context.destination);
+      result.amplify(multiplier);
+      return result;
+    }
+    var audio = document.getElementById("myaudio");
+    audio.volume = 1
+    var amp = amplifyMedia(audio, 5);
+</script-->

@@ -11,6 +11,7 @@ import os
 #import scikits.audiolab
 #import wave
 import soundfile
+from soundfile import SoundFile
 import numpy as np
 
 if __name__== '__main__':
@@ -34,7 +35,9 @@ def main(argv=None):
     print("Will be processing {} recordings".format(len(recordings)))
 
     for recording in recordings:
-        recording.sample_frequency = 44100 #FIXME Need to automatically update when creating the recording object
+        rec_soundfile = SoundFile(recording.recording_file)
+        # TODO Here or elsewhere, automatically parse datetime from filename and/or details
+        recording.sample_frequency = rec_soundfile.samplerate
         handler = ToDB(recording, recording.sample_frequency)
         #handler = ch.CallCounter()
         parse_audio(recording.recording_file, handler)

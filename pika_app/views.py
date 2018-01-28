@@ -3,6 +3,8 @@ from django.http import HttpResponse
 from django.views import generic
 from django.core.exceptions import ObjectDoesNotExist
 
+from call_handler import CallCounter
+from pika2 import Parser
 from .models import Call, Recording
 
 import soundfile
@@ -76,8 +78,15 @@ def verification_response(request, call_id, response):
         return redirect('calls')
     return redirect('verify_call', next_call.id, call.id)
 
-
-
 def call(request, call_id):
     call = Call.objects.get(pk=call_id)
     return call.spectrogram
+
+def analyze_segment(request, recording_id, start_second, end_second):
+    recording = Recording.objects.get(pk=recording_id)
+    parser = Parser(recording.recording_file, CallCounter())
+    title = "Frequency report: Parser {}, recording {}".format(parser.frequency, recording.sample_frequency)
+    return parser.analyze_interval([int(start_second), int(end_second)], nice_plotting=True, title=title, to_http=True)
+
+    #template_name = "pika_app/segment.html"
+    #return render(request, template_name, {'test':"WEE", 'rec':recording.recording_file})

@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, List, Any
 
 from django.db.models import FileField
 from django.db.models.fields.files import FieldFile
@@ -191,7 +191,12 @@ class Parser(object):
         """
         self.soundfile.close()
     
-    def analyze_interval(self, interval, nice_plotting=False, title=None):
+    def analyze_interval(self,
+                         interval,              # type: (List[int])
+                         nice_plotting=False,   # type: bool
+                         title=None,            # type: str
+                         to_http=False,         # type: bool
+                         ):  # type: (...) -> Any
         """Displays spectrogram and some related data for given time interval in the loaded audio.
         :interval list of form [start, end] in seconds
         """
@@ -208,7 +213,10 @@ class Parser(object):
         frame_scores = self.score_fft(with_negative=True)
         print("Passing intervals {}".format(
                 self.find_passing_intervals(frame_scores)))
-        self.spectrogram(title=title)
+        if to_http:
+            return self.spectrogram(title=title, to_http=to_http)
+        else:
+            self.spectrogram(title=title, to_http=to_http)
         self.debug = False
     
     def get_audio_interval(self, interval):
