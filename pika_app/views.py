@@ -3,11 +3,8 @@ from django.http import HttpResponse
 from django.views import generic
 from django.core.exceptions import ObjectDoesNotExist
 
-from call_handler import CallCounter
 from pika2 import Parser
 from .models import Call, Recording
-
-import soundfile
 
 # Create your views here.
 def index(request):
@@ -23,9 +20,12 @@ class RecordingsView(generic.ListView):
 def calls(request, recording_id=None):
     template_name = "pika_app/calls.html"
     call_summary = None
+    recording = None
+    collection = None
     if recording_id:
         try:
             recording = Recording.objects.get(pk=recording_id)
+            collection = recording.collection
             call_list = recording.calls.order_by("id")
             confirmed = wrong = unclassified = 0
             for call in call_list:
@@ -46,21 +46,36 @@ def calls(request, recording_id=None):
 
     else:
         call_list = Call.objects.order_by("id")
-    return render(request, template_name, {'call_list': call_list[:150], 'summary':call_summary})
+    return render(request, template_name, {'call_list': call_list,
+                                           'summary':call_summary,
+                                           'recording': recording,
+                                           'collection': collection,
+                                           })
 
-def verify_call(request, call_id, verified=None):
+def verify_call(request, call_id, verified=None, with_analysis=False):
     call = Call.objects.get(pk=call_id)
     try:
-        next_call = Call.objects.filter(verified__isnull=True).filter(id__gt=call_id).order_by("id")[0]
+        if with_analysis:
+            next_call = Call.objects.filter(id__gt=call_id).order_by("id")[0]
+            next_call_link = "/pika_app/verify_call/{}/t".format(next_call.id)
+        else:
+            next_call = Call.objects.filter(verified__isnull=True).filter(id__gt=call_id).order_by("id")[0]
+            next_call_link = "/pika_app/verify_call/{}".format(next_call.id)
     except IndexError:
-        next_call = None
+        next_call_link = None
     calls_link = "/pika_app/recording/{}/calls".format(call.recording.id)
     template_name = "pika_app/call.html"
-    return render(request, template_name, {'call': call, 
-        'next_call':next_call,
-        'verified':verified,
-        'calls_link':calls_link,
-        })
+
+    analysis = None
+    if with_analysis:
+        analysis = call.analysis()
+
+    return render(request, template_name, {'call': call,
+                                           'next_call_link':next_call_link,
+                                           'verified':verified,
+                                           'calls_link':calls_link,
+                                           'logs': analysis,
+                                           })
 
 def verification_response(request, call_id, response):
     call = Call.objects.get(pk=call_id)
@@ -82,11 +97,23 @@ def call(request, call_id):
     call = Call.objects.get(pk=call_id)
     return call.spectrogram
 
+def segment_spectrogram(request, recording_id, start_second, end_second):
+    recording = Recording.objects.get(pk=recording_id)
+    parser = Parser(recording.recording_file, None)
+    title = "Frequency report: Parser {}, recording {}".format(parser.frequency, recording.sample_frequency)
+    parser.analyze_interval([float(start_second), float(end_second)], nice_plotting=True)
+    return parser.spectrogram(title, to_http=True)
+
+
 def analyze_segment(request, recording_id, start_second, end_second):
     recording = Recording.objects.get(pk=recording_id)
-    parser = Parser(recording.recording_file, CallCounter())
-    title = "Frequency report: Parser {}, recording {}".format(parser.frequency, recording.sample_frequency)
-    return parser.analyze_interval([int(start_second), int(end_second)], nice_plotting=True, title=title, to_http=True)
+    parser = Parser(recording.recording_file, None)
+    parser.analyze_interval([float(start_second), float(end_second)], nice_plotting=True, debug_output=[])
 
-    #template_name = "pika_app/segment.html"
-    #return render(request, template_name, {'test':"WEE", 'rec':recording.recording_file})
+    template_name = "pika_app/segment.html"
+    return render(request, template_name, {'test': "WEE",
+                                           'recording': recording,
+                                           'logs': parser.log_storage,
+                                           'interval_start': start_second,
+                                           'interval_end': end_second}
+                  )

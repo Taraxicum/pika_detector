@@ -1,7 +1,8 @@
-from typing import Iterable, List, Any
+from typing import Iterable, List, Any, Optional
 
 from django.db.models import FileField
 from django.db.models.fields.files import FieldFile
+from numpy.core.multiarray import ndarray
 
 import find_peaks as peaks
 import numpy as np
@@ -124,7 +125,7 @@ class Parser(object):
     in favor of getting things working otherwise.
     """
     #*Constructor*#
-    def __init__(self, audio_file, handler, offset=0, step_size_divisor=2, debug=False):
+    def __init__(self, audio_file, handler, offset=0, step_size_divisor=4, debug=False):
         """
         :audio_file should be the path to a wav file.
         :handler should be of type CallHandler
@@ -150,6 +151,7 @@ class Parser(object):
             #raise Exception("pika.Parser: loaded file ({}) with frequency {}." \
             #        "  Frequency should be 44100.".format(audio_file, frequency))
         self.debug = debug
+        self.log_storage = None  # type: Optional[List[str]]
         
         # factor off from originally tuned for frequency of 44100
         self.sample_rate_factor = self.frequency/44100
@@ -157,14 +159,17 @@ class Parser(object):
         self.fft = None
         self.fft_size = int(4096*self.sample_rate_factor)
         self.step_size = int(self.fft_size*1.0/step_size_divisor)
-        self.factor = self.step_size*1.0/self.frequency
-        self.fft_window = [self.fft_size//32 + 150]
-        self.fft_window.append(self.fft_window[0] + 275)
-        
+
+        # Because we are scaling the size based on the sample rate we shouldn't need to adjust the window
+        #   if we want to window over the same sets of frequencies
+        #self.fft_window = [self.fft_size//32 + 150]
+        #self.fft_window.append(self.fft_window[0] + 275)
+        self.fft_window = [275, 550]
+
         #minimum peak distance for calculating harmonic frequencies
-        self.mpd = int(40*self.sample_rate_factor)
+        self.mpd = 40
         
-        #each ipd must fall within one of the ipd_filter ranges to be 
+        #each ipd (inter-peak distance) must fall within one of the ipd_filter ranges to be
         #considered a successful candidate for a pika call
         
         #tuned for beacon rock
@@ -180,43 +185,60 @@ class Parser(object):
         #self.base_peak_filter = [15, 60]
         
         #joint tuning
-        self.ipd_filters = [[int(45*self.sample_rate_factor), int(93*self.sample_rate_factor)],
-                            [int(110*self.sample_rate_factor), int(165*self.sample_rate_factor)]]
-        self.base_peak_filter = [int(15*self.sample_rate_factor), int(60*self.sample_rate_factor)]
+        # shouldn't need to scale by any factors since scaling the fft size should keep the bin sizes at the same
+        #   frequencies
+        self.ipd_filters = [[45, 93], [110, 165]]
+        self.base_peak_filter = [15, 60]
+        #self.ipd_filters = [[int(45*self.sample_rate_factor), int(93*self.sample_rate_factor)],
+        #                    [int(110*self.sample_rate_factor), int(165*self.sample_rate_factor)]]
+        #self.base_peak_filter = [int(15*self.sample_rate_factor), int(60*self.sample_rate_factor)]
         
         self.interval_finder=self.interval_finder_with_negative
+
+    @property
+    def factor(self):
+        return self.step_size*1.0/self.frequency
 
     def close(self):
         """Handles needed cleanup in particular closes soundfile
         """
         self.soundfile.close()
-    
+        self.log_storage = None
+
+    def log(self,
+            value,  # type: str
+            ):  # type: (...) -> None
+        """
+        For now generally will keep debugging output in an object to be done with as we want
+        """
+        if self.log_storage is not None:
+            self.log_storage.append(value)
+
     def analyze_interval(self,
-                         interval,              # type: (List[int])
+                         interval,              # type: (List[float])
                          nice_plotting=False,   # type: bool
-                         title=None,            # type: str
-                         to_http=False,         # type: bool
+                         debug_output=None,     # type: Optional[List[str]]
                          ):  # type: (...) -> Any
-        """Displays spectrogram and some related data for given time interval in the loaded audio.
+        """Logs scoring data for given time interval in the loaded audio.
         :interval list of form [start, end] in seconds
         """
+        if debug_output is not None:
+            if self.log_storage is None:
+                self.log_storage = debug_output
+            else:
+                raise NotImplementedError("Setting log storage when already defined, not sure to do in that situation")
         self.debug = True
         if nice_plotting:
             self.step_size = int(self.fft_size*1.0/64) #/64
-            self.factor = self.step_size*1.0/self.frequency
-        else:
-            self.step_size = int(self.fft_size*1.0/2) #/64
-            self.factor = self.step_size*1.0/self.frequency
+            #self.factor = self.step_size*1.0/self.frequency
+        #else:
+            #self.step_size = int(self.fft_size*1.0/2) #/64
+            #self.factor = self.step_size*1.0/self.frequency
 
         audio = self.get_audio_interval(interval)
         self.filtered_fft(audio)
         frame_scores = self.score_fft(with_negative=True)
-        print("Passing intervals {}".format(
-                self.find_passing_intervals(frame_scores)))
-        if to_http:
-            return self.spectrogram(title=title, to_http=to_http)
-        else:
-            self.spectrogram(title=title, to_http=to_http)
+        self.log("Passing intervals {}".format(self.find_passing_intervals(frame_scores)))
         self.debug = False
     
     def get_audio_interval(self, interval):
@@ -248,7 +270,7 @@ class Parser(object):
         #if interval_finder is None:
         #self.basic_interval_finder
         if self.debug:
-            print("ipd filters: {}".format(self.ipd_filters))
+            self.log("ipd filters: {}".format(self.ipd_filters))
         with self.handler as handler:
             seconds_per_block = 10
             block_size = self.frequency*seconds_per_block
@@ -260,12 +282,20 @@ class Parser(object):
                 for interval in good_intervals:
                     interval_start = int(interval[0]*self.frequency)
                     interval_end = int(interval[1]*self.frequency)
-                    handler.handle_call(self.offset + offset + interval[0], chunk[interval_start:interval_end])
+                    if self.doublecheck_interval(chunk[interval_start:interval_end]):
+                        handler.handle_call(self.offset + offset + interval[0], chunk[interval_start:interval_end])
+
+    def doublecheck_interval(self, interval_audio):
+        self.filtered_fft(interval_audio)
+        good_intervals = self.interval_finder()
+        return len(good_intervals) > 0
 
     def to_mono(self, audio):
-
         # type: (Iterable) -> Iterable
-        return [f[0] for f in audio]
+        try:
+            return [f[0] for f in audio]
+        except IndexError:
+            return audio
 
     def get_spectrogram(self, call, to_http=True):
         self.filtered_fft()
@@ -305,10 +335,20 @@ class Parser(object):
         #return wave_read, frequency
         return data, frequency
     
+    def _recenter_dc(self, audio):
+        # type: (ndarray) -> ndarray
+        dc_mean = np.mean(audio)
+        new_audio = np.zeros(np.asarray(audio).shape)
+        for i, value in enumerate(audio):
+            new_audio[i] = value - dc_mean #[max(frame[j]-dc_mean[j], 0) for j, v in enumerate(frame)]
+        return new_audio
+
     def filtered_fft(self, audio=None, filter_on=True):
         if audio is None:
             self.soundfile.seek(0)
             audio = self.soundfile.read()
+        audio = self._recenter_dc(audio)
+
         first_dim=int(np.ceil(1.0*(len(audio))/(self.step_size)))
         second_dim = int(self.fft_window[1] - self.fft_window[0])
         fft = np.zeros((first_dim, second_dim))
@@ -323,7 +363,7 @@ class Parser(object):
             max_val = np.amax(fft)
             fft = fft/np.max([max_val, .1])
             if self.debug:
-                print("segment max value: {}".format(max_val))
+               self.log("segment max value: {}".format(max_val))
             
             #noise-reduction
             avg_fft = np.sum(fft, axis=0)/len(fft)
@@ -352,7 +392,9 @@ class Parser(object):
         return (1+bin_number+self.fft_window[0])*bin_size
     
     def score_fft(self, with_negative=False):
-        """Scores frames for how likely they seem to be part of a pika call
+        """
+        Scores frames for how likely they seem to be part of a pika call
+
         :debug: if True outputs statements to help debug scoring process
         :returns 1d array of likeliness scores corresponding to the frames
         """
@@ -383,7 +425,7 @@ class Parser(object):
                 #higher intensity than the noisy bits
 
                 #joint tuning
-                if len(locs) >= 3 and locs[0] < 120:
+                if (3 <= len(locs) < 6) and (locs[0] < 120):
                     ipd = np.convolve(locs, [1, -1])
                     amount = 5.0/(len(locs) - 2)
                     if ((ipd[0] >= self.base_peak_filter[0]) and
@@ -409,14 +451,16 @@ class Parser(object):
                 if self.debug:
                     if len(locs) != 0:
                         ipd = np.convolve(locs, [1, -1])
-                        print("t: {:.2f}, {:.1f} | {} | ipd {}, count {}, score {}".format(i*self.factor, running_score, amount, ipd, count, score))
+                        self.log("t: {:.2f}, {:.1f} | {} | ipd {}, count {}, score {}".format(i*self.factor,
+                                                                                              running_score,
+                                                                                              amount,
+                                                                                              ipd, count, score))
                         r_max = np.max(frame)
-                        print("t: {:.2f}, 85%: {:.3f}, mean: {:.3f}, sd: {:.3f}".format(
-                                i*self.factor, np.percentile(frame, 85)/r_max,
+                        self.log("____85%: {:.3f}, mean: {:.3f}, sd: {:.3f}".format(
+                                np.percentile(frame, 85)/r_max,
                                 np.mean(frame)/r_max, np.std(frame)/r_max))
-                        print("t: {:.2f}, f: {}, ipd sd: {:.1f}, mean: {:.1f}, frame max: {:.3f}".format(
-                                i*self.factor, i,
-                                np.std(ipd[1:-1]), np.mean(ipd[1:-1]), frame_max))
+                        self.log("____f: {}, ipd sd: {:.1f}, mean: {:.1f}, frame max: {:.3f}".format(
+                                i, np.std(ipd[1:-1]), np.mean(ipd[1:-1]), frame_max))
 
             scores.append(score)
         return scores
@@ -427,41 +471,41 @@ class Parser(object):
         :returns list of intervals (in seconds) that are identified as 
         containing a pika call
         """
-        if self.factor > .05:
+        if True or self.factor > .05:
             scores = np.convolve(frame_scores,
                     [.5, .5, .5], mode='same')
         else:
             scores = np.convolve(frame_scores,
                     [.5, .5, .5, .5, .5, .5, .5, .5, .5, .5], mode='same')
-        #if self.debug:
-            #print "frame_scores: {}".format(frame_scores)
-            #print "smoothed scores: {}".format(scores)
+        if self.debug:
+            self.log("frame_scores: {}".format(frame_scores))
+            self.log("smoothed scores: {}".format(scores))
         ridges = []
         current_ridge = None
-        #threshold = 10.5
-        threshold = 8.5
+        threshold = 13
+        #threshold = 8.5
         #threshold = 10.0
-        for i, s in enumerate(scores):
+        for i, score in enumerate(scores):
             if current_ridge is not None:
-                if s < threshold:
+                if score < threshold:
                     ridges.append([current_ridge, (i -1)*self.factor])
                     current_ridge = None
             else:
-                if s > threshold:
+                if score > threshold:
                     current_ridge = i*self.factor
         if current_ridge is not None:
             ridges.append([current_ridge, len(scores)*self.factor])
-        min_ridge_length = .13
+        min_ridge_length = .07
         ridges[:] = [r for r in ridges if r[1] - r[0] > min_ridge_length]
         return ridges
 
     def spectrogram(self, title=None, to_http=False):
         #plt.figure(figsize=(6, 3))
         figure = plt.figure()
-        plt.imshow(np.asarray([f for f in self.fft]).T,
-                origin='lower', cmap="Greys")
-        plt.xticks(plt.xticks()[0], ["{0:.2f}".format(t*self.factor) 
-                                    for t in plt.xticks()[0]])
+        plt.imshow(np.asarray([f for f in self.fft]).T, origin='lower', cmap="Greys")
+        plt.xticks(plt.xticks()[0],
+                   ["{0:.2f}".format(t*self.factor) for t in plt.xticks()[0]]
+                   )
         plt.xlim(0, len(self.fft))
         
         plt.yticks(plt.yticks()[0], ["{}".format(float('%.2g' % (self.fft_bin_to_frequency(t)/1000.0)))

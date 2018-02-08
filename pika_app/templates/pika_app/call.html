@@ -22,8 +22,8 @@
 <div>
     <a href='/pika_app/verification_response/{{call.id}}/y' class='btn btn-default'>Yes</a>
     <a href='/pika_app/verification_response/{{call.id}}/n' class='btn btn-default'>No</a>
-{% if next_call %}
-    <a href='/pika_app/verify_call/{{next_call.id}}' class='btn btn-default'>Skip to Next Call</a>
+{% if next_call_link %}
+    <a href={{ next_call_link }} class='btn btn-default'>Skip to Next Call</a>
 {% else %}
 <p>this is the last call</p>
 {% endif %}
@@ -32,6 +32,16 @@
     <p> No call is available.</p>
 {% endif %}
 <a href='{{calls_link}}'>Call List</a>
+{% if logs %}
+<div>
+    <ul>
+    {% for log in logs %}
+        <li>{{ log }}</li>
+    {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 
 <script>
     function amplifyMedia(mediaElem, multiplier) {

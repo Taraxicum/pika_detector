@@ -2,10 +2,10 @@
 
 <div style='height:30px'>
 </div>
-{% if rec %}
-<div style='height:100px'>
-    <h2>{{rec}}</h2>
-    <!--img src='/pika_app/call/{{ call.id }}' -->
+{% if recording %}
+<div style='height:500px'>
+    <h2>{{recording.recording_file}}</h2>
+    <img src='/pika_app/segment_spectrogram/{{ recording.id }}/{{ interval_start }}/{{ interval_end }}' />
 </div>
 <!--div>
     <audio autoplay controls id='myaudio'>
@@ -13,6 +13,14 @@
         Your browser does not support the audio element.
     </audio>
 </div-->
+<div>
+    <h3>Logs</h3>
+    <ul>
+    {% for log in logs %}
+        <li>{{ log }}</li>
+    {% endfor %}
+    </ul>
+</div>
 {% endif %}
 
 <!--script>

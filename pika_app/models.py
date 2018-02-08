@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+from datetime import timedelta
+
 from django.db import models
 from django.conf import settings
 import os
@@ -12,12 +14,14 @@ def recording_path(instance, filename):
     ##EA 8/1/16
      # CONSIDER move elsewhere and import
      # CONSIDER expand to provide layout for all pathing for app?
-    rec_path = "{}/Collections/{}/collection_{}/" .format(
-            settings.MEDIA_ROOT,
-            instance.collection.observer.name,
-            instance.collection.id)
-    return '{0}/{1}'.format(rec_path, filename)
+    return recording_path_by_collection(instance.collection, filename)
 
+def recording_path_by_collection(collection, filename):
+    rec_path = "{}/Collections/{}/collection_{}/" .format(
+        settings.MEDIA_ROOT,
+        collection.observer.name,
+        collection.id)
+    return '{0}/{1}'.format(rec_path, filename)
 
 class Observer(models.Model):
     name = models.CharField(max_length=200)
@@ -82,6 +86,10 @@ class Recording(models.Model):
 #            self.duration = mutagen.mp3.MP3(self.filename).info.length
 #        super(Recording, self).save(*args, **kwargs)
 
+    @property
+    def calls_link(self):
+        return "/pika_app/recording/{}/calls".format(self.pk)
+
     class Meta:
         app_label = "pika_app"
 
@@ -103,6 +111,17 @@ class Call(models.Model):
         parser = pika2.Parser(self.filename, None, self.offset, step_size_divisor=64)
         return parser.get_spectrogram(self)
     
+    def analysis(self):
+        parser = pika2.Parser(self.filename, None)
+        parser.analyze_interval([0, self.duration],  debug_output=[])
+        return parser.log_storage
+
+    @property
+    def call_time(self):
+        minutes = self.offset//60
+        seconds = int(self.offset)%60
+        return self.recording.start_time + timedelta(minutes=minutes, seconds=seconds)
+
     @property
     def offset_display(self):
         minutes = self.offset//60

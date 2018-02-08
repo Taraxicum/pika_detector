@@ -1,4 +1,13 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+{% if collection and recording %}
+<div>
+    <ul>
+        <li>Observer: {{ collection.observer }}</li>
+        <li>Description: {{ collection.description }}</li>
+        <li>Start time: {{ recording.start_time }}</li>
+    </ul>
+</div>
+{% endif %}
 {% if summary %}
 <div>
     <ul>
@@ -12,7 +21,8 @@
 {% if call_list %}
     <ul>
         {% for call in call_list %}
-            <li>
+        <li>
+            <a href="{{ call.recording.calls_link }}">Recording {{call.recording.pk}}</a>
             <audio controls>
                 <source src="/static/{{ call.local_filename }}" type="audio/wav">
                 Your browser does not support the audio element.
@@ -24,8 +34,8 @@
             {% else %}
             <span class='fa fa-minus-circle' style='color:red'></span>
             {% endif %}
-            <a href='/pika_app/verify_call/{{ call.id }}'>call {{call.id}} {{call.offset_display}}</a>
-            </li>
+            <a href='/pika_app/verify_call/{{ call.id }}'>call at {{ call.call_time }}</a>
+        </li>
         {% endfor %}
     </ul>
 {% else %}
