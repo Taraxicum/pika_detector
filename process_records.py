@@ -8,6 +8,7 @@ from pika2 import parse_audio
 import call_handler as ch
 import sys
 import os
+from time import time
 #import scikits.audiolab
 #import wave
 import soundfile
@@ -28,13 +29,17 @@ if __name__== '__main__':
 from pika_app.models import Recording, Call
 
 def main(argv=None):
+
     recordings = Recording.objects.filter(processed=False)
     #TODO before processing, have interface which states number of files
     #to be processed and total length of recordings (and maybe estimate
     # of how long it will take?) and verify user wants to proceed.
-    print("Will be processing {} recordings".format(len(recordings)))
-
+    num_recordings = len(recordings)
+    print("Will be processing {} recordings".format(num_recordings))
+    
+    start_time = time()
     for recording in recordings:
+        rec_time = time()
         rec_soundfile = SoundFile(recording.recording_file)
         # TODO Here or elsewhere, automatically parse datetime from filename and/or details
         recording.sample_frequency = rec_soundfile.samplerate
@@ -43,6 +48,9 @@ def main(argv=None):
         parse_audio(recording.recording_file, handler)
         recording.processed = True
         recording.save()
+        print("processed this recording in {} seconds".format(time() - rec_time))
+    print("finished processing batch in {} seconds".format(time() - start_time))
+
 
 class ToDB(ch.CallHandler):
     def __init__(self, recording, frequency):
