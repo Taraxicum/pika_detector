@@ -20,25 +20,25 @@ Usage Example:
     
 """
 import pika_parser as pp
-import utility as u
-import processing as p
+import utility as util
+import processing as processing
 import pika_db_models as db
 import os
 
 def init_collection_and_associated_recordings():
     db.init_db()
 
-    folder = u.get_collection_folder()    
-    observer = u.get_observer()
-    start_date = u.get_start_date()
-    end_date = u.get_end_date(start_date)
-    description = u.get_text("Short description of collection: ")
-    notes = u.get_text("More in depth notes about collection: ")
+    folder = util.get_collection_folder()
+    observer = util.get_observer()
+    start_date = util.get_start_date()
+    end_date = util.get_end_date(start_date)
+    description = util.get_text("Short description of collection: ")
+    notes = util.get_text("More in depth notes about collection: ")
     collection = db.Collection(observer=observer, folder=folder,
             start_date=start_date, end_date=end_date,
             description=description, notes=notes)
 
-    u.set_observations(collection)
+    util.set_observations(collection)
     return collection
 
 def preprocess_collection(collection):
@@ -58,8 +58,8 @@ def preprocess_collection(collection):
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             
-            for chunk, offset in p.chunk_recording(recording):
-                p.write_active_segments(chunk, output_path, offset)
+            for chunk, offset in processing.chunk_recording(recording):
+                processing.write_active_segments(chunk, output_path, offset)
 
 def identify_and_write_calls(collection):
     for observation in collection.observations:

@@ -1,5 +1,3 @@
-from typing import Iterable, Sized
-
 import errno
 
 from numpy.core.multiarray import ndarray
@@ -9,8 +7,6 @@ import call_handler as ch
 import sys
 import os
 from time import time
-#import scikits.audiolab
-#import wave
 import soundfile
 from soundfile import SoundFile
 import numpy as np
@@ -44,7 +40,6 @@ def main(argv=None):
         # TODO Here or elsewhere, automatically parse datetime from filename and/or details
         recording.sample_frequency = rec_soundfile.samplerate
         handler = ToDB(recording, recording.sample_frequency)
-        #handler = ch.CallCounter()
         parse_audio(recording.recording_file, handler)
         recording.processed = True
         recording.save()
@@ -71,7 +66,6 @@ class ToDB(ch.CallHandler):
     def handle_call(self, offset, audio):
         # type: (float, ndarray) -> None
         duration = len(audio)*1.0/self.frequency
-        #import pdb; pdb.set_trace()
         call = Call(recording=self.recording, offset=offset,
                     duration=duration, filename="temp")
         call.save()

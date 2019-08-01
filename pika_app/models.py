@@ -73,6 +73,11 @@ class Recording(models.Model):
     def output_folder(self):
         return os.path.dirname(self.recording_file.path) + "/recording{}/".format(self.id)
 
+    @property
+    def label_file(self):
+        return "{}_labels.txt".format(self.recording_file.name[:-4])
+        #return os.path.join(self.output_folder(), "{}_labels.txt".format(str(self)))
+
 #    def __str__(self):
 #        return self.filename
 ## EA 8/1/16 replaced with alternate below
@@ -102,6 +107,15 @@ class Call(models.Model):
     offset = models.FloatField(null=True, blank=True)
     duration = models.FloatField(null=True, blank=True)
     filename = models.FilePathField(null=True, blank=True) #May need to adjust
+
+    @property
+    def start_time(self):
+        return self.offset
+
+    @property
+    def end_time(self):
+        return self.offset + self.duration
+
     @property
     def local_filename(self):
         return self.filename[len(settings.MEDIA_ROOT):]
